@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Users, ShieldCheck, Activity, Gift as GiftIcon, ShoppingBag, 
-  Crown, Smartphone, Eraser, X, Medal, IdCard, Layout, Zap, Smile, Heart, Building, Image as ImageIcon, UserCircle
+  Crown, Smartphone, Eraser, X, Medal, IdCard, Layout, Zap, Smile, Heart, Building, Image as ImageIcon, UserCircle, Home
 } from 'lucide-react';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -25,6 +25,7 @@ import AdminEmojis from './Admin/AdminEmojis';
 import AdminRelationships from './Admin/AdminRelationships';
 import AdminBackgrounds from './Admin/AdminBackgrounds';
 import AdminDefaults from './Admin/AdminDefaults';
+import AdminRooms from './Admin/AdminRooms';
 
 interface AdminPanelProps {
   isOpen: boolean;
@@ -68,7 +69,6 @@ const compressImage = (base64: string, maxWidth: number, maxHeight: number, qual
         ctx.imageSmoothingQuality = 'medium';
         ctx.drawImage(img, 0, 0, width, height);
       }
-      // إذا كانت الصورة لا تزال كبيرة، نقوم بتقليل الجودة بشكل جذري
       resolve(canvas.toDataURL('image/webp', quality));
     };
     img.onerror = () => resolve(base64);
@@ -86,7 +86,6 @@ const AdminPanel: React.FC<AdminPanelProps> = (props) => {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, callback: (url: string) => void, w: number, h: number) => {
     const file = e.target.files?.[0];
     if (file) {
-      // منع الملفات التي تتجاوز 1 ميجابايت قبل البدء أصلاً
       if (file.size > 1024 * 1024) {
         alert('حجم الملف الأصلي كبير جداً (أكثر من 1 ميجابايت). يرجى ضغطه أولاً قبل الرفع.');
         return;
@@ -97,14 +96,12 @@ const AdminPanel: React.FC<AdminPanelProps> = (props) => {
         const result = ev.target?.result as string;
         
         if (file.type === 'image/gif' || file.type.startsWith('video/')) {
-          // الـ GIF لا يمكن ضغطه بـ Canvas دون فقدان الحركة، لذا نفحص حجمه فقط
           if (result.length > 900000) {
              alert('ملف الـ GIF كبير جداً بعد التحويل. يرجى اختيار ملف أصغر لضمان الحفظ.');
              return;
           }
           callback(result);
         } else {
-          // ضغط الصور العادية بجودة منخفضة (0.2) لضمان صغر الحجم
           const compressed = await compressImage(result, w, h, 0.2);
           if (compressed.length > 950000) {
              alert('حتى بعد الضغط، الصورة لا تزال كبيرة جداً. يرجى تقليل أبعادها يدوياً.');
@@ -119,6 +116,7 @@ const AdminPanel: React.FC<AdminPanelProps> = (props) => {
 
   const menuItems = [
     { id: 'users', label: 'الأعضاء', icon: Users, color: 'text-blue-400' },
+    { id: 'rooms_manage', label: 'إدارة الغرف', icon: Home, color: 'text-red-500' },
     { id: 'defaults', label: 'صور البداية', icon: UserCircle, color: 'text-indigo-400' },
     { id: 'badges', label: 'أوسمة الشرف', icon: Medal, color: 'text-yellow-500' },
     { id: 'id_badges', label: 'أوسمة الـ ID', icon: IdCard, color: 'text-blue-500' },
@@ -155,6 +153,7 @@ const AdminPanel: React.FC<AdminPanelProps> = (props) => {
 
       <div className="flex-1 bg-slate-900/40 overflow-y-auto p-6 md:p-10 custom-scrollbar transition-all duration-100">
         {activeTab === 'users' && <AdminUsers users={props.users} vipLevels={props.vipLevels} onUpdateUser={props.onUpdateUser} />}
+        {activeTab === 'rooms_manage' && <AdminRooms rooms={props.rooms} />}
         {activeTab === 'defaults' && <AdminDefaults handleFileUpload={handleFileUpload} />}
         {activeTab === 'badges' && <AdminBadges users={props.users} onUpdateUser={props.onUpdateUser} />}
         {activeTab === 'id_badges' && <AdminIdBadges users={props.users} onUpdateUser={props.onUpdateUser} />}
