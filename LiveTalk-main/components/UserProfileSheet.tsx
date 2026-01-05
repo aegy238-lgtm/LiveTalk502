@@ -1,7 +1,8 @@
+
 import React, { useMemo, useEffect, useState } from 'react';
 import { User, Room } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, MessageCircle, Gift, Medal, Award, Trophy, Star, MoreVertical, ShieldCheck, MicOff, UserX, ShieldAlert, RotateCcw, Heart, Users, Copy } from 'lucide-react';
+import { X, MessageCircle, Gift, Medal, Award, Trophy, Star, MoreVertical, ShieldCheck, MicOff, UserX, ShieldAlert, RotateCcw, Heart, Users, Copy, Key, Mail, Lock, Coins } from 'lucide-react';
 import { db } from '../services/firebase';
 import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
 
@@ -49,6 +50,11 @@ const LevelBadge: React.FC<{ level: number; type: 'wealth' | 'recharge' }> = ({ 
 const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, onClose, isCurrentUser, onAction, currentUser, allUsers = [], currentRoom, onShowRoomRank }) => {
   const [roomContribution, setRoomContribution] = useState<number>(0);
   const [showAdminMenu, setShowAdminMenu] = useState(false);
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [securityTab, setSecurityTab] = useState<'id' | 'email'>('id');
+  const [newPassword, setNewPassword] = useState('');
+  const [newEmail, setNewEmail] = useState(currentUser.email || '');
+  const [authPass, setAuthPass] = useState('');
   
   const user = useMemo(() => {
     const latest = allUsers.find(u => u.id === initialUser.id);
@@ -72,6 +78,34 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
        fetchContrib();
     }
   }, [currentRoom.id, user.id]);
+
+  const handleUpdateIdPassword = async () => {
+    if (newPassword.length < 6) return alert('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+    try {
+      await updateDoc(doc(db, 'users', currentUser.id), { loginPassword: newPassword });
+      alert('تم ربط الحساب بكلمة مرور الـ ID بنجاح!');
+      setShowSecurityModal(false);
+      setNewPassword('');
+    } catch (e) {
+      alert('فشل تحديث البيانات');
+    }
+  };
+
+  const handleUpdateEmailAuth = async () => {
+    if (!newEmail.includes('@')) return alert('يرجى إدخال بريد إلكتروني صحيح');
+    if (authPass.length < 6) return alert('كلمة السر يجب أن تكون 6 أحرف على الأقل');
+    try {
+      await updateDoc(doc(db, 'users', currentUser.id), { 
+        email: newEmail,
+        authPassword: authPass 
+      });
+      alert('تم تعيين البريد وكلمة السر بنجاح! يمكنك الآن استخدامهما للدخول المباشر.');
+      setShowSecurityModal(false);
+      setAuthPass('');
+    } catch (e) {
+      alert('فشل تحديث البيانات');
+    }
+  };
 
   const handleAdminAction = async (action: 'toggleMod' | 'kickMic' | 'kickRoom' | 'resetUserCharm' | 'breakCP' | 'breakFriend') => {
     const roomRef = doc(db, 'rooms', currentRoom.id);
@@ -184,6 +218,7 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
                            <span className="text-xs font-bold">إنهاء الصداقة</span>
                         </button>
                       )}
+                      {/* Fixed: Completed truncated button and added remaining action buttons */}
                       <button onClick={() => handleAdminAction('resetUserCharm')} className="w-full p-3 flex items-center gap-3 hover:bg-white/5 border-b border-white/5 text-right" dir="rtl">
                          <RotateCcw size={16} className="text-blue-500" />
                          <span className="text-xs font-bold text-white">تصفير الكاريزما</span>
@@ -192,7 +227,7 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
                          <MicOff size={16} className="text-orange-500" />
                          <span className="text-xs font-bold text-white">تنزيل من المايك</span>
                       </button>
-                      <button onClick={() => handleAdminAction('kickRoom')} className="w-full p-3 flex items-center gap-3 hover:bg-red-950/30 text-right text-red-500" dir="rtl">
+                      <button onClick={() => handleAdminAction('kickRoom')} className="w-full p-3 flex items-center gap-3 hover:bg-white/5 text-right text-red-500" dir="rtl">
                          <UserX size={16} />
                          <span className="text-xs font-bold">طرد من الغرفة</span>
                       </button>
@@ -202,107 +237,119 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
               </div>
             )}
           </div>
-
-          <div className="absolute top-2 -right-2 w-28 h-28 z-[150] flex items-center justify-center overflow-visible">
-             <div className="relative w-full h-full flex items-center justify-center">
-                <div className="w-[72%] h-[72%] rounded-full overflow-hidden border-[3px] border-[#0c101b] bg-slate-800 shadow-xl relative z-10 translate-y-0.5"><img src={user.avatar} className="w-full h-full object-cover" alt="Profile" /></div>
-                {user.frame && <motion.img initial={{ scale: 0.8 }} animate={{ scale: 1.0 }} src={user.frame} className="absolute inset-0 w-full h-full object-contain z-20 scale-[1.15] pointer-events-none" />}
-             </div>
-          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto scrollbar-hide px-6 pb-6 relative z-10 bg-gradient-to-b from-[#0c101b] to-[#05070a] rounded-b-[2.5rem]">
-          
-          {/* عرض العلاقات النشطة (CP و صداقة) */}
-          <div className="mt-4 flex flex-col gap-2">
-            {user.cpPartner && (
-              <motion.div initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="bg-gradient-to-r from-pink-600/20 to-purple-600/20 rounded-2xl border border-pink-500/20 p-2 flex items-center justify-center gap-3 relative overflow-hidden">
-                 <div className="flex items-center gap-2 relative z-10">
-                    <img src={user.avatar} className="w-8 h-8 rounded-full border border-white/20 object-cover" />
-                    <div className="flex flex-col items-center">
-                       <Heart size={14} fill="#ec4899" className="text-pink-500" />
-                       <span className="text-[6px] font-black text-white/70 uppercase">CP</span>
-                    </div>
-                    <img src={user.cpPartner.avatar} className="w-8 h-8 rounded-full border border-white/20 object-cover" />
-                 </div>
-                 <span className="text-[9px] font-bold text-white/90">مرتبط بـ {user.cpPartner.name}</span>
-              </motion.div>
+        <div className="flex-1 overflow-y-auto p-6 pt-10 space-y-6">
+          <div className="flex flex-col items-center">
+            <div className="relative w-24 h-24 mb-3">
+              <div className="w-full h-full rounded-full border-2 border-white/20 overflow-hidden bg-slate-900 shadow-2xl">
+                <img src={user.avatar} className="w-full h-full object-cover" alt="" />
+              </div>
+              {user.frame && <img src={user.frame} className="absolute inset-0 scale-[1.3] pointer-events-none" alt="" />}
+            </div>
+            
+            <div className="flex items-center gap-2 mb-1">
+              <h2 className="text-xl font-black text-white">{user.name}</h2>
+              {user.badge && <img src={user.badge} className="h-4 object-contain" alt="" />}
+            </div>
+            
+            <div className="flex items-center gap-2 mb-4">
+              <div className="bg-white/10 px-2 py-0.5 rounded-lg border border-white/10 text-[9px] font-black text-slate-400">
+                ID: {user.customId || user.id}
+              </div>
+              <LevelBadge level={wealthLvl} type="wealth" />
+              <LevelBadge level={rechargeLvl} type="recharge" />
+            </div>
+
+            {user.bio && (
+              <p className="text-xs text-slate-400 text-center mb-6 px-4 line-clamp-3 font-medium">
+                {user.bio}
+              </p>
             )}
 
-            {user.friendPartner && (
-              <motion.div initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="bg-gradient-to-r from-blue-600/20 to-indigo-600/20 rounded-2xl border border-blue-500/20 p-2 flex items-center justify-center gap-3 relative overflow-hidden">
-                 <div className="flex items-center gap-2 relative z-10">
-                    <img src={user.avatar} className="w-8 h-8 rounded-full border border-white/20 object-cover" />
-                    <div className="flex flex-col items-center">
-                       <Users size={14} className="text-blue-400" />
-                       <span className="text-[6px] font-black text-white/70 uppercase">Friend</span>
-                    </div>
-                    <img src={user.friendPartner.avatar} className="w-8 h-8 rounded-full border border-white/20 object-cover" />
-                 </div>
-                 <span className="text-[9px] font-bold text-white/90">صديق لـ {user.friendPartner.name}</span>
-              </motion.div>
-            )}
-          </div>
-
-          <div className="pt-4 text-right mb-4">
-             <div className="flex items-center gap-2 justify-end mb-3">
-               {targetIsModerator && (
-                 <div className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-lg text-[9px] font-black border border-emerald-500/30">مشرف</div>
-               )}
-               <h2 className={`text-xl ${user.nameStyle ? user.nameStyle : 'font-black text-white'}`}>{user.name}</h2>
-             </div>
-             
-             <div className="flex items-center justify-end gap-2 flex-wrap mb-5">
-                <button onClick={() => { navigator.clipboard.writeText(user.customId?.toString() || user.id); onAction('copyId'); }} className="relative h-10 min-w-[120px] flex items-center justify-center px-4 active:scale-95 group">
-                  {user.badge ? (
-                    <>
-                      <img src={user.badge} className="absolute inset-0 w-full h-full object-contain z-0" />
-                      <div className="relative z-10 flex items-center gap-1.5">
-                         <span className="font-black text-white text-[10px] tracking-tight drop-shadow-md">ID: {user.customId || user.id}</span>
-                         <Copy size={10} className="text-white/50 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                    </>
-                  ) : (
-                    <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-4 py-1.5 rounded-full flex items-center gap-2 border border-white/10 shadow-lg">
-                       <span className="text-[10px] font-black text-white">ID: {user.customId || user.id}</span>
-                       <Copy size={10} className="text-white/50" />
-                    </div>
-                  )}
-                </button>
-             </div>
-
-             <div className="flex items-center justify-end gap-3 mb-6 pr-1">
-                <motion.button 
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={onShowRoomRank}
-                  className="relative h-7 flex items-center gap-2 bg-gradient-to-r from-pink-600 to-rose-600 rounded-full px-3 border border-pink-400/30 shadow-lg shadow-rose-900/20 active:scale-90"
-                >
-                   <Trophy size={14} className="text-yellow-400" fill="currentColor" />
-                   <span className="text-[10px] font-black text-white tracking-tighter">{(Number(user.charm || 0)).toLocaleString()}</span>
-                </motion.button>
-                <div className="flex flex-col items-center gap-1"><LevelBadge level={wealthLvl} type="wealth" /></div>
-                <div className="flex flex-col items-center gap-1"><LevelBadge level={rechargeLvl} type="recharge" /></div>
-                {user.isVip && <div className="h-7 bg-gradient-to-r from-amber-500 to-yellow-600 rounded-full px-2 flex items-center justify-center border border-amber-400/30 shadow-lg"><span className="text-[10px] font-black text-black">VIP {user.vipLevel}</span></div>}
-             </div>
-          </div>
-
-          <div className="mb-6 flex flex-wrap items-center justify-end gap-3 py-2">
-             {(user.achievements && user.achievements.length > 0) ? user.achievements.map((medal, i) => (<motion.div key={i} whileHover={{ scale: 1.1, y: -2 }} className="w-16 h-16 flex items-center justify-center shrink-0"><img src={medal} className="max-w-full max-h-full object-contain filter drop-shadow-md" /></motion.div>)) : <div className="w-full text-right py-2 text-[9px] text-slate-600 italic px-1">لا توجد أوسمة معروضة حالياً</div>}
-          </div>
-
-          <div className="flex flex-col gap-2.5 mt-auto pointer-events-auto">
-             {!isCurrentUser ? (
-                <div className="flex gap-2.5">
-                   <button onClick={() => { onClose(); onAction('message', user); }} className="w-12 h-12 bg-white/5 border border-white/10 rounded-[1.4rem] flex items-center justify-center text-slate-400 active:scale-90 transition-all"><MessageCircle size={20}/></button>
-                   <button onClick={() => { onClose(); onAction('gift'); }} className="flex-1 h-12 bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-800 text-white font-black rounded-[1.4rem] shadow-lg flex items-center justify-center gap-2.5 active:scale-95 transition-all"><Gift size={18} fill="currentColor" /> <span className="text-xs tracking-wide font-black">إرسال هدية</span></button>
+            <div className="grid grid-cols-2 gap-4 w-full mb-6">
+              <div className="bg-white/5 border border-white/5 p-4 rounded-3xl text-center flex flex-col items-center">
+                <span className="text-[10px] text-slate-500 font-bold uppercase mb-1">كاريزما الغرفة</span>
+                <div className="flex items-center gap-1.5 text-pink-500 font-black text-lg">
+                  {roomContribution.toLocaleString()}
+                  <Trophy size={16} />
                 </div>
-             ) : <button onClick={() => onAction('editProfile')} className="w-full py-3.5 bg-white/5 border border-white/10 rounded-[1.4rem] text-white font-black text-xs active:scale-95">تعديل الملف الشخصي</button>}
+              </div>
+              <div className="bg-white/5 border border-white/5 p-4 rounded-3xl text-center flex flex-col items-center">
+                <span className="text-[10px] text-slate-500 font-bold uppercase mb-1">إجمالي الدعم</span>
+                <div className="flex items-center gap-1.5 text-yellow-500 font-black text-lg">
+                  {(Number(user.wealth || 0)).toLocaleString()}
+                  <Coins size={16} />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 w-full">
+              {!isCurrentUser && (
+                <>
+                  <button onClick={() => { onAction('message'); onClose(); }} className="flex-1 bg-white/5 border border-white/10 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all">
+                    <MessageCircle size={20} />
+                    دردشة
+                  </button>
+                  <button onClick={() => onAction('gift')} className="flex-1 bg-gradient-to-r from-pink-600 to-rose-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-pink-900/20 flex items-center justify-center gap-2 active:scale-95 transition-all">
+                    <Gift size={20} />
+                    إهداء
+                  </button>
+                </>
+              )}
+              {isCurrentUser && (
+                <button onClick={() => { setShowSecurityModal(true); }} className="w-full bg-blue-600/20 border border-blue-500/30 text-blue-400 font-black py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all">
+                  <ShieldCheck size={20} />
+                  أمان الحساب والربط
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </motion.div>
+
+      {/* Security Modal for Current User */}
+      <AnimatePresence>
+        {showSecurityModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md pointer-events-auto">
+            <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-slate-900 border border-white/10 rounded-[2.5rem] w-full max-w-sm p-6 shadow-2xl relative">
+              <button onClick={() => setShowSecurityModal(false)} className="absolute top-4 right-4 p-2 text-slate-500"><X size={20} /></button>
+              
+              <h3 className="text-xl font-black text-white mb-6 text-center">أمان وربط الحساب</h3>
+              
+              <div className="flex bg-black/40 p-1 rounded-xl mb-6">
+                <button onClick={() => setSecurityTab('id')} className={`flex-1 py-2 text-[10px] font-black rounded-lg transition-all ${securityTab === 'id' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>ربط الـ ID</button>
+                <button onClick={() => setSecurityTab('email')} className={`flex-1 py-2 text-[10px] font-black rounded-lg transition-all ${securityTab === 'email' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>ربط البريد</button>
+              </div>
+
+              {securityTab === 'id' ? (
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 pr-1">كلمة مرور الـ ID الجديدة</label>
+                    <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="6 أرقام أو حروف على الأقل" className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-white text-sm outline-none focus:border-blue-500" />
+                  </div>
+                  <button onClick={handleUpdateIdPassword} className="w-full py-4 bg-blue-600 text-white font-black rounded-xl active:scale-95 transition-all">تحديث كلمة مرور ID</button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 pr-1">البريد الإلكتروني</label>
+                    <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-white text-sm outline-none focus:border-blue-500" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 pr-1">تعيين كلمة سر الدخول</label>
+                    <input type="password" value={authPass} onChange={(e) => setAuthPass(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-white text-sm outline-none focus:border-blue-500" />
+                  </div>
+                  <button onClick={handleUpdateEmailAuth} className="w-full py-4 bg-emerald-600 text-white font-black rounded-xl active:scale-95 transition-all">ربط البريد وتفعيل الدخول</button>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
 
+/* Fix: Added missing default export */
 export default UserProfileSheet;

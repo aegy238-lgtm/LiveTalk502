@@ -52,7 +52,7 @@ const VIPModal: React.FC<VIPModalProps> = ({ user, vipLevels, onClose, onBuy }) 
            ) : (
              vipLevels.sort((a,b) => a.level - b.level).map((vip) => {
                const isCurrentLevel = user.isVip && user.vipLevel === vip.level;
-               const isHigherLevel = user.isVip && (user.vipLevel || 0) > vip.level;
+               // تم تعديل المنطق: لا يوجد شيء اسمه مستوى "أعلى" يغلق البقية، الجميع متاح للشراء
                const canAfford = Number(user.coins || 0) >= vip.cost;
 
                return (
@@ -61,7 +61,7 @@ const VIPModal: React.FC<VIPModalProps> = ({ user, vipLevels, onClose, onBuy }) 
                    className={`relative rounded-[2.2rem] p-4 border transition-all duration-500 overflow-hidden group ${
                      isCurrentLevel 
                        ? 'bg-amber-950/20 border-amber-500/60 shadow-xl shadow-amber-900/20' 
-                       : isHigherLevel ? 'bg-slate-800/10 border-white/5 opacity-50' : 'bg-slate-900/60 border-white/10 hover:border-amber-500/30'
+                       : 'bg-slate-900/60 border-white/10 hover:border-amber-500/30'
                    }`}
                  >
                    <div className="flex items-center gap-5 relative z-10">
@@ -82,27 +82,33 @@ const VIPModal: React.FC<VIPModalProps> = ({ user, vipLevels, onClose, onBuy }) 
 
                       <div className="flex flex-col items-end gap-2">
                          {isCurrentLevel ? (
-                           <div className="px-4 py-2 bg-emerald-500/20 text-emerald-400 text-[10px] font-black rounded-xl flex items-center gap-1.5 border border-emerald-500/30">
-                              <Check size={14} strokeWidth={3} /> مفعّل
-                           </div>
+                           <button 
+                             onClick={() => {
+                               if(confirm(`ترغب في تجديد رتبة ${vip.name} مقابل ${vip.cost.toLocaleString()} كوينز؟`)) {
+                                   onBuy(vip);
+                               }
+                             }}
+                             className="px-4 py-2 bg-emerald-500/20 text-emerald-400 text-[10px] font-black rounded-xl flex flex-col items-center gap-0.5 border border-emerald-500/30 active:scale-95"
+                           >
+                              <span className="flex items-center gap-1"><Check size={12} strokeWidth={3} /> مفعّل</span>
+                              <span className="text-[8px] opacity-70">إعادة تفعيل</span>
+                           </button>
                          ) : (
                            <button 
-                              disabled={isHigherLevel || !canAfford}
+                              disabled={!canAfford}
                               onClick={() => {
                                   if(confirm(`تفعيل رتبة ${vip.name} مقابل ${vip.cost.toLocaleString()} كوينز؟`)) {
                                       onBuy(vip);
                                   }
                               }}
                               className={`px-5 py-2.5 rounded-[1.2rem] text-[11px] font-black flex flex-col items-center min-w-[100px] transition-all active:scale-95 shadow-lg ${
-                                 isHigherLevel 
-                                   ? 'bg-slate-800 text-slate-600' 
-                                   : canAfford 
-                                      ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-black border-t border-white/20' 
-                                      : 'bg-slate-700 text-slate-500'
+                                 canAfford 
+                                   ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-black border-t border-white/20' 
+                                   : 'bg-slate-700 text-slate-500 opacity-50'
                               }`}
                            >
                               <span className="flex items-center gap-1 mb-0.5 uppercase tracking-tighter">
-                                {isHigherLevel ? 'سابق' : 'تفعيل'} <ArrowUpCircle size={12}/>
+                                تفعيل <ArrowUpCircle size={12}/>
                               </span>
                               <span className="text-[10px] opacity-90">{vip.cost.toLocaleString()} 🪙</span>
                            </button>

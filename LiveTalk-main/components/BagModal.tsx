@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ShoppingBag, Check, MessageSquare, Image as ImageIcon, Coins, Sparkles, Wand2, Trash2 } from 'lucide-react';
@@ -164,7 +163,8 @@ const BagModal: React.FC<BagModalProps> = ({ isOpen, onClose, items, user, onBuy
                    <div className="w-full mt-auto">
                       {isEquipped ? (
                          <button 
-                            onClick={() => handleUnequip(item.type)}
+                            // Fix: Although filteredItems ensures item.type is 'frame' | 'bubble', explicit casting is needed to satisfy handleUnequip's specific signature due to ItemType being broader.
+                            onClick={() => handleUnequip(item.type as 'frame' | 'bubble')}
                             className="w-full py-2.5 bg-red-500/20 text-red-400 text-[10px] font-black rounded-xl border border-red-500/20 flex items-center justify-center gap-1.5 shadow-inner hover:bg-red-500/30 transition-all active:scale-95"
                          >
                             <Trash2 size={12} /> إزالة

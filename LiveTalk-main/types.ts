@@ -18,6 +18,13 @@ export interface StoreItem {
   url: string;
 }
 
+export interface InventoryItem {
+  giftId: string;
+  count: number;
+  name: string;
+  icon: string;
+}
+
 export interface CPPartner {
   id: string;
   name: string;
@@ -33,6 +40,25 @@ export interface HostAgency {
   agentName: string;
   createdAt: any;
   totalProduction: number;
+}
+
+export interface BombLevel {
+  threshold: number;
+  giftId: string;
+}
+
+export interface BombSettings {
+  levels: BombLevel[];
+}
+
+export interface BombEvent {
+  id: string;
+  level: number;
+  threshold: number;
+  giftsPool: string[]; // IDs of gifts in this bomb
+  claimedBy: string[]; // User IDs who already claimed
+  status: 'active' | 'expired';
+  timestamp: any;
 }
 
 export interface User {
@@ -67,23 +93,27 @@ export interface User {
     followers: number;
   };
   ownedItems?: string[];
+  inventory?: InventoryItem[]; 
   isFollowing?: boolean;
   isMuted?: boolean;
   isSpecialId?: boolean;
   isAdmin?: boolean;
-  isAgency?: boolean; // وكيل شحن
+  isAgency?: boolean; 
   agencyBalance?: number;
-  isHostAgent?: boolean; // وكيل مضيفين
-  hostAgencyId?: string; // لربط المضيف بوكالة
-  isHost?: boolean; // هل هو مضيف مسجل
-  hostProduction?: number; // تارجت المضيف
+  isHostAgent?: boolean; 
+  hostAgencyId?: string; 
+  isHost?: boolean; 
+  hostProduction?: number; 
   isBanned?: boolean;
   banUntil?: string;
   seatIndex?: number;
   status?: string;
   activeEmoji?: string; 
   cpPartner?: CPPartner | null;
-  friendPartner?: CPPartner | null; // الحقل الجديد للصداقة
+  friendPartner?: CPPartner | null; 
+  loginPassword?: string; 
+  email?: string; // New field for linked email
+  authPassword?: string; // New field for linked password
   roomTemplate?: {
     title: string;
     category: string;
@@ -117,7 +147,7 @@ export interface GlobalAnnouncement {
   giftIcon: string;
   roomTitle: string;
   roomId: string;
-  type: 'gift' | 'lucky_win' | 'lucky_bag';
+  type: 'gift' | 'lucky_win' | 'lucky_bag' | 'bomb_drop';
   amount: number;
   timestamp: any;
 }
@@ -128,12 +158,12 @@ export type GiftDisplaySize = 'small' | 'medium' | 'large' | 'full' | 'max';
 export interface Gift {
   id: string;
   name: string;
-  icon: string; // رابط الفيديو أو الأنميشن
-  catalogIcon?: string; // أيقونة العرض في الصندوق
+  icon: string; 
+  catalogIcon?: string; 
   cost: number;
   animationType: GiftAnimationType;
-  displaySize?: GiftDisplaySize; // حجم العرض المختار
-  duration?: number; // مدة العرض بالثواني
+  displaySize?: GiftDisplaySize; 
+  duration?: number; 
   isLucky?: boolean;
   category?: 'popular' | 'exclusive' | 'lucky' | 'celebrity' | 'trend';
 }
@@ -176,6 +206,8 @@ export interface Room {
   micCount?: number; 
   moderators?: string[]; 
   kickedUsers?: string[]; 
+  sessionCoins?: number; 
+  lastBombLevel?: number; 
 }
 
 export interface LuckyMultiplier {

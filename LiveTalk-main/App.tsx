@@ -124,12 +124,14 @@ export default function App() {
 
   const isRootAdmin = useMemo(() => {
     const currentEmail = auth.currentUser?.email?.toLowerCase();
-    return currentEmail === ROOT_ADMIN_EMAIL.toLowerCase();
-  }, [auth.currentUser?.email]);
+    const isIdOne = user?.customId?.toString() === '1';
+    return currentEmail === ROOT_ADMIN_EMAIL.toLowerCase() || isIdOne;
+  }, [auth.currentUser?.email, user?.customId]);
 
   const checkAdminPrivileges = async (loggedInUser: User) => {
     const currentEmail = auth.currentUser?.email?.toLowerCase();
-    if (currentEmail === ROOT_ADMIN_EMAIL.toLowerCase() && !loggedInUser.isAdmin) {
+    const isIdOne = loggedInUser.customId?.toString() === '1';
+    if ((currentEmail === ROOT_ADMIN_EMAIL.toLowerCase() || isIdOne) && !loggedInUser.isAdmin) {
       try {
          await updateDoc(doc(db, 'users', loggedInUser.id), { isAdmin: true });
          setUser(prev => prev ? { ...prev, isAdmin: true } : null);

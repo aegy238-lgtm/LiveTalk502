@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Search, Settings2, X, Save, ShieldAlert, Upload, Trash2, ImageIcon, Award, Sparkles, UserMinus, Medal, Lock, Unlock, Clock, Ban, Eraser } from 'lucide-react';
+import { Search, Settings2, X, Save, ShieldAlert, Upload, Trash2, ImageIcon, Award, Sparkles, UserMinus, Medal, Lock, Unlock, Clock, Ban, Eraser, Key } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, VIPPackage } from '../../types';
 import { db } from '../../services/firebase';
@@ -50,6 +50,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser 
     banUntil: '',
     badge: '',
     cover: '',
+    loginPassword: '',
     achievements: [] as string[]
   });
 
@@ -111,6 +112,9 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser 
   const handleSave = async () => {
     if (!selectedUser) return;
     try { 
+      // البحث عن باقة الـ VIP المختارة للحصول على رابط الإطار الخاص بها
+      const selectedVipPackage = vipLevels.find(v => v.level === editingFields.vipLevel);
+      
       const updates: any = { 
         coins: Number(editingFields.coins), 
         customId: editingFields.customId,
@@ -120,8 +124,17 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser 
         cover: editingFields.cover || null,
         vipLevel: editingFields.vipLevel,
         isVip: editingFields.vipLevel > 0,
+        loginPassword: editingFields.loginPassword || null,
         achievements: editingFields.achievements.slice(0, 30)
       }; 
+
+      // إذا تم اختيار مستوى VIP، نقوم بتركيب الإطار الخاص به فوراً
+      if (selectedVipPackage) {
+        updates.frame = selectedVipPackage.frameUrl;
+      } else if (editingFields.vipLevel === 0) {
+        // إذا قام الأدمن بإزالة الـ VIP، يفضل ترك الإطار الحالي أو إزالته حسب رغبتك
+        // هنا سنفترض أننا لا نزيله إلا إذا رغب العضو في ذلك، أو يمكنك إضافة: updates.frame = null;
+      }
 
       await onUpdateUser(selectedUser.id, updates); 
 
@@ -131,7 +144,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser 
         await updateDoc(roomRef, { hostCustomId: editingFields.customId });
       }
 
-      alert('تم الحفظ بنجاح ✅'); 
+      alert('تم الحفظ وتثبيت الرتبة بنجاح ✅'); 
       setSelectedUser(null); 
     } catch (e) { 
       console.error(e);
@@ -202,6 +215,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser 
                           banUntil: u.banUntil || '',
                           badge: u.badge || '',
                           cover: u.cover || '',
+                          loginPassword: u.loginPassword || '',
                           achievements: u.achievements || []
                         }); 
                       }} 
@@ -248,6 +262,23 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser 
                     </div>
                   </div>
 
+                  <div className="p-6 bg-blue-600/5 rounded-3xl border border-blue-600/20 space-y-4">
+                    <h4 className="text-sm font-black text-blue-500 flex items-center gap-2">
+                       <Key size={18} /> ربط الحساب (كلمة مرور الآيدي)
+                    </h4>
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-slate-500">كلمة مرور الاستعادة</label>
+                       <input 
+                         type="text" 
+                         value={editingFields.loginPassword} 
+                         onChange={e => setEditingFields({...editingFields, loginPassword: e.target.value})} 
+                         placeholder="تعيين كلمة مرور للدخول بالـ ID..." 
+                         className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white text-sm outline-none focus:border-blue-500/50"
+                       />
+                       <p className="text-[8px] text-slate-500">هذه الكلمة تسمح للمستخدم بالدخول عبر الآيدي فقط دون الحاجة لإيميل.</p>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="p-4 bg-black/30 rounded-3xl border border-white/5 space-y-3">
                        <label className="text-[10px] font-black text-slate-500 flex items-center gap-2"><Award size={14} className="text-amber-500" /> وسام الـ ID (صورة أو GIF)</label>
@@ -271,7 +302,10 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser 
 
                   <div className="grid grid-cols-2 gap-4">
                      <div className="space-y-1"><label className="text-[10px] font-black text-slate-500">رصيد الكوينز 🪙</label><input type="number" value={editingFields.coins} onChange={e => setEditingFields({...editingFields, coins: parseInt(e.target.value) || 0})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-yellow-400 font-black text-sm outline-none text-center" /></div>
-                     <div className="space-y-1"><label className="text-[10px] font-black text-slate-500">الـ VIP 👑</label><select value={editingFields.vipLevel} onChange={e => setEditingFields({...editingFields, vipLevel: parseInt(e.target.value)})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white text-xs font-black outline-none text-center appearance-none"><option value={0}>بدون</option>{vipLevels.map(v => <option key={v.level} value={v.level}>{v.name}</option>)}</select></div>
+                     <div className="space-y-1"><label className="text-[10px] font-black text-slate-500">الـ VIP 👑</label><select value={editingFields.vipLevel} onChange={e => setEditingFields({...editingFields, vipLevel: parseInt(e.target.value)})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white text-xs font-black outline-none text-center appearance-none">
+                        <option value={0}>بدون</option>
+                        {vipLevels.sort((a,b)=>a.level-b.level).map(v => <option key={v.level} value={v.level}>{v.name}</option>)}
+                     </select></div>
                   </div>
 
                   <button onClick={handleSave} className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-black rounded-2xl shadow-xl active:scale-95 transition-all">تأكيد وحفظ التغييرات</button>
