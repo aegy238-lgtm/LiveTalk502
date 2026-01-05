@@ -28,7 +28,7 @@ interface GiftAnimationLayerProps {
 }
 
 /**
- * مكون مشغل الفيديو الذكي - تم تعديله لملء الشاشة بالكامل (Full Screen)
+ * مكون مشغل الفيديو الذكي - تم تعديله لملء الشاشة بالكامل وتشغيل الصوت
  */
 const SmartVideoPlayer = ({ src, objectFit }: { src: string, objectFit: string }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -40,6 +40,7 @@ const SmartVideoPlayer = ({ src, objectFit }: { src: string, objectFit: string }
 
     const startVideo = async () => {
       try {
+        // نبدأ مكتومين لضمان الموافقة على الأوتوبلاي ثم نفتح الصوت
         video.muted = true;
         if (playPromiseRef.current) {
           await playPromiseRef.current;
@@ -47,14 +48,15 @@ const SmartVideoPlayer = ({ src, objectFit }: { src: string, objectFit: string }
         playPromiseRef.current = video.play();
         await playPromiseRef.current;
         
+        // محاولة فتح الصوت بعد ثانية واحدة لضمان تفاعل المستخدم مسبقاً مع الصفحة
         setTimeout(() => {
-          if (video) video.muted = false;
-        }, 50);
+          if (video) {
+            video.muted = false;
+            video.volume = 0.5; // حجم صوت معتدل
+          }
+        }, 100);
       } catch (err) {
-        if (err instanceof Error && err.name !== 'AbortError') {
-          video.muted = true;
-          video.play().catch(e => {});
-        }
+        console.warn("Video sound playback blocked by browser", err);
       }
     };
 
@@ -76,7 +78,6 @@ const SmartVideoPlayer = ({ src, objectFit }: { src: string, objectFit: string }
         key={src}
         src={src} 
         autoPlay
-        muted
         playsInline
         webkit-playsinline="true"
         preload="auto"
@@ -153,7 +154,6 @@ export const GiftAnimationLayer = forwardRef((props: GiftAnimationLayerProps, re
       case 'small': return 'w-32 h-32';
       case 'medium': return 'w-64 h-64';
       case 'large': return 'w-[85vw] h-[85vw]';
-      // ملء الشاشة بالكامل دون قيود
       case 'full': return 'w-full h-full';
       case 'max': return 'w-full h-full';
       default: return 'w-64 h-64';
@@ -164,7 +164,6 @@ export const GiftAnimationLayer = forwardRef((props: GiftAnimationLayerProps, re
     if (!icon) return null;
     
     const isFull = displaySize === 'full' || displaySize === 'max';
-    // استخدام object-cover لضمان ملء الشاشة بالكامل للمقاسات الكبرى كما طلب المستخدم
     const objectFit = isFull ? 'object-cover' : (displaySize === 'large' ? 'object-contain' : 'object-contain');
 
     if (isVideoUrl(icon)) {
@@ -190,10 +189,9 @@ export const GiftAnimationLayer = forwardRef((props: GiftAnimationLayerProps, re
         {activeAnimations.map((event) => {
           const displaySize = event.displaySize || 'medium';
           const isFull = displaySize === 'full' || displaySize === 'max' || event.giftAnimation === 'full-screen';
-          const isVideo = isVideoUrl(event.giftIcon);
           
           const sizeClass = getSizeClass(displaySize);
-          const showFullScreen = isFull || isVideo;
+          const showFullScreen = isFull;
           
           return (
             <motion.div 
@@ -205,7 +203,6 @@ export const GiftAnimationLayer = forwardRef((props: GiftAnimationLayerProps, re
                 duration: showFullScreen ? 0 : 0.5,
                 ease: "linear"
               }}
-              // إزالة الهوامش العلوي والسفلي إذا كان فيديو أو ملء شاشة ليشغل المساحة بالكامل
               className={`absolute inset-0 flex flex-col items-center justify-center ${showFullScreen ? 'z-[1000]' : 'z-[800]'}`}
             >
               <div className={`relative ${sizeClass} flex items-center justify-center overflow-hidden`}>

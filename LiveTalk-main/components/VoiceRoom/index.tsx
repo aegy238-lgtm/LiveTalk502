@@ -205,6 +205,7 @@ const VoiceRoom: React.FC<any> = ({
   }, []);
 
   const pickLuckyMultiplier = (multipliers: LuckyMultiplier[]) => {
+    if (!multipliers || multipliers.length === 0) return { label: 'X1', value: 1, chance: 100 };
     const totalChance = multipliers.reduce((sum, m) => sum + m.chance, 0);
     let random = Math.random() * totalChance;
     for (const m of multipliers) {
@@ -241,45 +242,45 @@ const VoiceRoom: React.FC<any> = ({
       });
     }
 
-    setTimeout(() => {
-      let winAmount = 0;
-      if (gift.isLucky) {
-        const isWin = (Math.random() * 100) < (gameSettings.luckyGiftWinRate || 30);
-        if (isWin && gameSettings.luckyMultipliers?.length > 0) {
-          const picked = pickLuckyMultiplier(gameSettings.luckyMultipliers);
-          winAmount = gift.cost * quantity * picked.value;
-        }
+    // منطق الحظ الفوري
+    let winAmount = 0;
+    if (gift.isLucky || gift.category === 'lucky') {
+      const isWin = (Math.random() * 100) < (gameSettings.luckyGiftWinRate || 30);
+      if (isWin && gameSettings.luckyMultipliers && gameSettings.luckyMultipliers.length > 0) {
+        const picked = pickLuckyMultiplier(gameSettings.luckyMultipliers);
+        winAmount = gift.cost * quantity * picked.value;
       }
+    }
 
-      onUpdateUser({ 
-        coins: Number(currentUser.coins) - totalCost + winAmount, 
-        wealth: Number(currentUser.wealth || 0) + totalCost 
-      });
+    // تحديث الرصيد المحلي فوراً
+    onUpdateUser({ 
+      coins: Number(currentUser.coins) - totalCost + winAmount, 
+      wealth: Number(currentUser.wealth || 0) + totalCost 
+    });
 
-      const updatedSpeakers = localSpeakers.map((s: any) => {
-        if (recipientIds.includes(s.id)) return { ...s, charm: (Number(s.charm) || 0) + giftValuePerRecipient };
-        return s;
-      });
-      setLocalSpeakers(updatedSpeakers);
+    const updatedSpeakers = localSpeakers.map((s: any) => {
+      if (recipientIds.includes(s.id)) return { ...s, charm: (Number(s.charm) || 0) + giftValuePerRecipient };
+      return s;
+    });
+    setLocalSpeakers(updatedSpeakers);
 
-      if (winAmount > 0) {
-        setLuckyWinAmount(winAmount);
-        setTimeout(() => setLuckyWinAmount(0), 6000);
+    if (winAmount > 0) {
+      setLuckyWinAmount(winAmount);
+      setTimeout(() => setLuckyWinAmount(0), 6000);
+    }
+
+    if (isComboHit) {
+      if (!pendingSyncData.current) {
+        pendingSyncData.current = { giftId: gift.id, count: 0, recipients: recipientIds, totalCost: 0, totalWin: 0 };
       }
-
-      if (isComboHit) {
-        if (!pendingSyncData.current) {
-          pendingSyncData.current = { giftId: gift.id, count: 0, recipients: recipientIds, totalCost: 0, totalWin: 0 };
-        }
-        pendingSyncData.current.count += quantity;
-        pendingSyncData.current.totalCost += totalCost;
-        pendingSyncData.current.totalWin += winAmount;
-        if (comboSyncTimerRef.current) clearTimeout(comboSyncTimerRef.current);
-        comboSyncTimerRef.current = setTimeout(() => commitPendingGiftSync(gift), 3000); 
-      } else {
-        commitSingleGift(gift, quantity, recipientIds, totalCost, winAmount, updatedSpeakers);
-      }
-    }, 0);
+      pendingSyncData.current.count += quantity;
+      pendingSyncData.current.totalCost += totalCost;
+      pendingSyncData.current.totalWin += winAmount;
+      if (comboSyncTimerRef.current) clearTimeout(comboSyncTimerRef.current);
+      comboSyncTimerRef.current = setTimeout(() => commitPendingGiftSync(gift), 3000); 
+    } else {
+      commitSingleGift(gift, quantity, recipientIds, totalCost, winAmount, updatedSpeakers);
+    }
 
     return true;
   };
@@ -296,8 +297,7 @@ const VoiceRoom: React.FC<any> = ({
       const batch = writeBatch(db);
       
       recIds.forEach(rid => {
-        const valuePerRecipient = cost / recIds.length;
-        // تعديل: الألماس المحتسب هو 70% فقط من قيمة الهدية المستلمة
+        const valuePerRecipient = (gift.cost * qty);
         const diamondEarnings = valuePerRecipient * 0.7;
 
         batch.update(doc(db, 'users', rid), { 
@@ -310,8 +310,11 @@ const VoiceRoom: React.FC<any> = ({
         }, { merge: true });
       });
 
-      batch.set(doc(collection(db, 'rooms', initialRoom.id, 'gift_events')), {
+      // إضافة حدث الهدية
+      const giftEventRef = doc(collection(db, 'rooms', initialRoom.id, 'gift_events'));
+      batch.set(giftEventRef, {
         giftId: gift.id, 
+        giftName: gift.name,
         giftIcon: gift.icon, 
         giftAnimation: gift.animationType || 'pop',
         senderId: currentUser.id, 
@@ -323,16 +326,20 @@ const VoiceRoom: React.FC<any> = ({
         timestamp: serverTimestamp()
       });
 
-      if (win >= 100000 || cost >= 100000) {
-        batch.set(doc(collection(db, 'global_announcements')), {
-          senderId: currentUser.id, senderName: currentUser.name, giftName: gift.name, giftIcon: gift.icon,
+      // إضافة إعلان عالمي (الشريط) إذا كان المبلغ كبيراً أو فوزاً بالحظ
+      if (win >= 10000 || cost >= 10000) {
+        const announcementRef = doc(collection(db, 'global_announcements'));
+        batch.set(announcementRef, {
+          senderId: currentUser.id, senderName: currentUser.name, giftName: gift.name, giftIcon: (gift.catalogIcon || gift.icon),
           recipientName: recIds.length > 1 ? `${recIds.length} مستخدمين` : (users.find(u => u.id === recIds[0])?.name || 'مستخدم'),
-          roomTitle: initialRoom.title, roomId: initialRoom.id, amount: win >= 100000 ? win : cost,
-          type: win >= 100000 ? 'lucky_win' : 'gift', timestamp: serverTimestamp()
+          roomTitle: initialRoom.title, roomId: initialRoom.id, amount: win >= 10000 ? win : cost,
+          type: win >= 10000 ? 'lucky_win' : 'gift', timestamp: serverTimestamp()
         });
       }
 
-      batch.set(doc(collection(db, 'rooms', initialRoom.id, 'messages')), {
+      // تسجيل رسالة الدردشة
+      const messageRef = doc(collection(db, 'rooms', initialRoom.id, 'messages'));
+      batch.set(messageRef, {
         userId: currentUser.id, userName: currentUser.name,
         userWealthLevel: currentUser.wealthLevel || calcLevel(Number(currentUser.wealth || 0)),
         userRechargeLevel: currentUser.rechargeLevel || calcLevel(Number(currentUser.rechargePoints || 0)),
@@ -340,11 +347,7 @@ const VoiceRoom: React.FC<any> = ({
         type: 'gift', isLuckyWin: win > 0, timestamp: serverTimestamp()
       });
 
-      batch.commit().catch(e => {
-          if (e?.code === 'resource-exhausted') {
-              console.warn("Write stream exhausted, delaying gift log...");
-          }
-      });
+      batch.commit().catch(e => console.error("Batch commit failed", e));
       queueRoomSpeakersUpdate(speakers);
     } catch (e) {
       console.error("Critical gift logic error", e);
@@ -371,7 +374,7 @@ const VoiceRoom: React.FC<any> = ({
         recipientsLimit: recipients, claimedBy: [], createdAt: serverTimestamp(), expiresAt: Timestamp.fromDate(expiresAt)
       };
       addDoc(collection(db, 'lucky_bags'), bagData).then(docRef => {
-        if (totalAmount >= 100000) {
+        if (totalAmount >= 50000) {
           addDoc(collection(db, 'global_announcements'), {
             senderName: currentUser.name, giftIcon: '💰', giftName: 'حقيبة حظ',
             roomTitle: initialRoom.title, roomId: initialRoom.id, amount: totalAmount,
@@ -556,6 +559,7 @@ const VoiceRoom: React.FC<any> = ({
       {showLuckyBag && <LuckyBagModal isOpen={showLuckyBag} onClose={() => setShowLuckyBag(false)} userCoins={Number(currentUser.coins)} onSend={handleSendLuckyBag} />}
       <GameCenterModal isOpen={showGameCenter} onClose={() => setShowGameCenter(false)} onSelectGame={(game) => { setActiveGame(game); setShowGameCenter(false); }} />
       
+      {/* Fix: Replace undefined 'user' with 'currentUser' in game modal calls */}
       {activeGame === 'wheel' && <WheelGameModal isOpen={activeGame === 'wheel'} onClose={() => setActiveGame(null)} userCoins={Number(currentUser.coins)} onUpdateCoins={(c) => onUpdateUser({ coins: c })} winRate={gameSettings.wheelWinRate} gameSettings={gameSettings} />}
       {activeGame === 'slots' && <SlotsGameModal isOpen={activeGame === 'slots'} onClose={() => setActiveGame(null)} userCoins={Number(currentUser.coins)} onUpdateCoins={(c) => onUpdateUser({ coins: c })} winRate={gameSettings.slotsWinRate} gameSettings={gameSettings} />}
       {activeGame === 'lion' && <LionWheelGameModal isOpen={activeGame === 'lion'} onClose={() => setActiveGame(null)} userCoins={Number(currentUser.coins)} onUpdateCoins={(c) => onUpdateUser({ coins: c })} gameSettings={gameSettings} />}

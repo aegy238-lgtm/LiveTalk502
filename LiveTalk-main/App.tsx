@@ -100,7 +100,12 @@ export default function App() {
     luckyGiftWinRate: 30,
     luckyGiftRefundPercent: 0,
     luckyXEnabled: false,
-    luckyMultipliers: [],
+    luckyMultipliers: [
+      { label: 'X1', value: 1, chance: 50 },
+      { label: 'X10', value: 10, chance: 30 },
+      { label: 'X100', value: 100, chance: 15 },
+      { label: 'X1000', value: 1000, chance: 5 }
+    ],
     wheelJackpotX: 8,
     wheelNormalX: 2,
     slotsSevenX: 20,
@@ -164,6 +169,21 @@ export default function App() {
       setInitializing(false);
     }
 
+    // مراقبة الإعلانات العالمية (الشرايط)
+    const qAnnouncements = query(collection(db, 'global_announcements'), orderBy('timestamp', 'desc'), limit(1));
+    const unsubAnnouncements = onSnapshot(qAnnouncements, (snapshot) => {
+      if (!snapshot.empty) {
+        const data = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as GlobalAnnouncement;
+        const msgTime = data.timestamp?.toMillis ? data.timestamp.toMillis() : Date.now();
+        // إظهار الشريط فقط إذا كان جديداً (آخر 10 ثوانٍ) ولم يظهر من قبل
+        if (Date.now() - msgTime < 10000 && data.id !== lastAnnouncementId.current) {
+          lastAnnouncementId.current = data.id;
+          setAnnouncement(data);
+          setTimeout(() => setAnnouncement(null), 7000);
+        }
+      }
+    });
+
     const unsubIdentity = onSnapshot(doc(db, 'appSettings', 'identity'), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -172,6 +192,12 @@ export default function App() {
         if (data.appName) setAppName(data.appName);
         if (data.authBackground) setAuthBackground(data.authBackground);
       }
+    });
+
+    const unsubGameSettings = onSnapshot(doc(db, 'appSettings', 'games'), (docSnap) => {
+       if (docSnap.exists() && docSnap.data().gameSettings) {
+          setGameSettings(prev => ({ ...prev, ...docSnap.data().gameSettings }));
+       }
     });
 
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
@@ -201,7 +227,7 @@ export default function App() {
     
     return () => { 
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
-      unsubIdentity(); unsubRooms(); unsubUsers(); unsubGifts();
+      unsubIdentity(); unsubRooms(); unsubUsers(); unsubGifts(); unsubAnnouncements(); unsubGameSettings();
     };
   }, []);
 
