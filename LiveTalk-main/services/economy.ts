@@ -3,9 +3,16 @@ import { db } from './firebase';
 import { doc, updateDoc, increment, writeBatch, arrayUnion } from 'firebase/firestore';
 
 /**
- * محرك الاقتصاد الموحد - لايف توك (V6 - المحسن للشراء الفوري)
- * يعتمد كلياً على مبدأ "التحديث المحلي أولاً، المزامنة لاحقاً"
+ * محرك الاقتصاد الموحد - لايف توك (V7 - المحسن للشراء الفوري والمزامنة الخلفية)
+ * يعتمد كلياً على مبدأ "التحديث المحلي أولاً، المزامنة لاحقاً" لضمان سرعة فائقة
  */
+
+// وظيفة داخلية لتحميل الصور في خلفية المتصفح
+const preloadImage = (url: string) => {
+  if (!url) return;
+  const img = new Image();
+  img.src = url;
+};
 
 export const EconomyEngine = {
   
@@ -46,10 +53,15 @@ export const EconomyEngine = {
     return true;
   },
 
-  // 2. شراء رتبة VIP - تنفيذ فوري
+  // 2. شراء رتبة VIP - تنفيذ فوري مع تحميل البيانات في الخلفية
   buyVIP: (userId: string, currentCoins: number, currentWealth: number, vip: any, updateLocalState: (data: any) => void) => {
-    if (currentCoins < vip.cost) return false;
+    // التحقق من الرصيد أولاً
+    if (Number(currentCoins) < Number(vip.cost)) return false;
 
+    // 1. تحميل إطار الـ VIP في خلفية المتصفح فوراً لضمان ظهوره بدون تأخير
+    preloadImage(vip.frameUrl);
+
+    // 2. حساب القيم الجديدة
     const newCoins = Number(currentCoins) - Number(vip.cost);
     const newWealth = Number(currentWealth || 0) + Number(vip.cost);
 
@@ -61,21 +73,24 @@ export const EconomyEngine = {
       frame: vip.frameUrl
     };
 
-    // تحديث الواجهة فوراً
+    // 3. تحديث واجهة المستخدم فوراً (قبل الاتصال بالسيرفر)
     updateLocalState(updateData);
 
-    // المزامنة في الخلفية
+    // 4. المزامنة مع Firestore في "الخلفية" (Background Sync)
+    // نستخدم IIFE لضمان عدم حظر الخيط الرئيسي للمتصفح
     (async () => {
       try {
-        await updateDoc(doc(db, 'users', userId), {
+        const userRef = doc(db, 'users', userId);
+        await updateDoc(userRef, {
           isVip: true,
           vipLevel: vip.level,
           coins: increment(-vip.cost),
           wealth: increment(vip.cost),
           frame: vip.frameUrl
         });
+        console.log(`VIP ${vip.name} sync completed in background.`);
       } catch (e) {
-        console.error("Background Sync Error (VIP):", e);
+        console.error("Background Sync Error (VIP Purchase):", e);
       }
     })();
 

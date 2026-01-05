@@ -224,10 +224,23 @@ export default function App() {
       const giftsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Gift));
       setGifts(giftsData.length > 0 ? giftsData : DEFAULT_GIFTS);
     });
+
+    // إضافة المستمع للمتجر (إطارات وفقاعات)
+    const unsubStore = onSnapshot(collection(db, 'store'), (snapshot) => {
+      const storeData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StoreItem));
+      setStoreItems(storeData.length > 0 ? storeData : DEFAULT_STORE_ITEMS);
+    });
+
+    // إضافة المستمع للـ VIP
+    const unsubVip = onSnapshot(collection(db, 'vip'), (snapshot) => {
+      const vipData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as VIPPackage));
+      setVipLevels(vipData.length > 0 ? vipData : DEFAULT_VIP_LEVELS);
+    });
     
     return () => { 
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
       unsubIdentity(); unsubRooms(); unsubUsers(); unsubGifts(); unsubAnnouncements(); unsubGameSettings();
+      unsubStore(); unsubVip();
     };
   }, []);
 
@@ -311,11 +324,19 @@ export default function App() {
 
   const handleBuyVIP = (vip: VIPPackage) => {
     if (!user) return;
+    
+    // إغلاق النافذة فوراً لتحسين الاستجابة
+    setShowVIPModal(false);
+
+    // تنفيذ الشراء في الخلفية (محلياً فوراً ومزامنة خلفية)
     const success = EconomyEngine.buyVIP(user.id, user.coins, user.wealth, vip, (updatedData) => {
         setUser(prev => prev ? { ...prev, ...updatedData } : null);
     });
-    if (!success) alert('عذراً، رصيدك غير كافٍ لتفعيل هذه الرتبة 🪙');
-    else setShowVIPModal(false);
+
+    if (!success) {
+      alert('عذراً، رصيدك غير كافٍ لتفعيل هذه الرتبة 🪙');
+      setShowVIPModal(true); // إعادة فتح النافذة إذا فشل الرصيد
+    }
   };
 
   if (initializing) return (
