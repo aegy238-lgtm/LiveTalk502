@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../../services/firebase';
 import { doc, collection, addDoc, updateDoc, increment, serverTimestamp, writeBatch, onSnapshot, getDoc, query, orderBy, limit, where, Timestamp, setDoc, deleteDoc, arrayUnion, getDocs } from 'firebase/firestore';
@@ -28,17 +29,14 @@ import WinStrip from '../WinStrip';
 import EditProfileModal from '../EditProfileModal';
 import { AnimatePresence, motion } from 'framer-motion';
 
-// دالة حساب المستوى الموحدة لضمان التطابق
-const calcLevel = (pts: number) => {
-  if (!pts || pts <= 0) return 1;
-  const l = Math.floor(Math.sqrt(pts) / 200);
-  return Math.max(1, Math.min(100, l));
-};
-
+/**
+ * شارة ليفل الدردشة - تصميم ملكي متطابق 100% مع شارة البروفايل
+ * تم توحيد الأبعاد (20px) والخطوط والتأثيرات
+ */
 const ChatLevelBadge: React.FC<{ level: number; type: 'wealth' | 'recharge' }> = ({ level, type }) => {
   const isWealth = type === 'wealth';
   return (
-    <div className="relative h-[18px] min-w-[58px] flex items-center pr-3 group cursor-default shrink-0">
+    <div className="relative h-[20px] min-w-[65px] flex items-center pr-3 group cursor-default shrink-0">
       <div className={`absolute inset-0 right-3 rounded-l-md border border-amber-500/60 shadow-lg ${
         isWealth 
           ? 'bg-gradient-to-r from-[#6a29e3] to-[#8b5cf6]' 
@@ -47,15 +45,15 @@ const ChatLevelBadge: React.FC<{ level: number; type: 'wealth' | 'recharge' }> =
         <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')]"></div>
       </div>
       <div className="relative z-10 flex-1 text-center pl-1 pr-1">
-        <span className="text-[10px] font-black italic tracking-tighter text-white drop-shadow-1px_2px_rgba(0,0,0,0.8) leading-none block transform translate-y-[0.5px]">
+        <span className="text-[11px] font-black italic tracking-tighter text-white drop-shadow-md leading-none block transform translate-y-[0.5px]">
           {level}
         </span>
       </div>
-      <div className="relative z-20 w-[20px] h-[20px] flex items-center justify-center -mr-2">
+      <div className="relative z-20 w-[22px] h-[22px] flex items-center justify-center -mr-2">
         <div className={`absolute inset-0 rounded-sm transform rotate-45 border border-amber-500 shadow-md ${
           isWealth ? 'bg-[#7c3aed]' : 'bg-[#000]'
         }`}></div>
-        <span className="relative z-30 text-[9px] mb-0.5 drop-shadow-md select-none">👑</span>
+        <span className="relative z-30 text-[10px] mb-0.5 drop-shadow-md select-none">👑</span>
       </div>
     </div>
   );
@@ -92,7 +90,7 @@ const VoiceRoom: React.FC<any> = ({
   const comboSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const comboExpireTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const emojiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const entrySentRef = useRef<boolean>(false); // ضمان إرسال الدخولية مرة واحدة لكل دخول
+  const entrySentRef = useRef<boolean>(false); 
   
   const pendingSyncData = useRef<{giftId: string, count: number, recipients: string[], totalCost: number, totalWin: number} | null>(null);
 
@@ -105,7 +103,6 @@ const VoiceRoom: React.FC<any> = ({
 
   const isHost = room.hostId === currentUser.id;
 
-  // إطلاق حدث دخول الغرفة عند الدخول لعرض الدخولية لجميع المستخدمين
   useEffect(() => {
      if (currentUser.activeEntry && currentUser.activeEntry !== '' && !entrySentRef.current) {
         entrySentRef.current = true;
@@ -116,7 +113,7 @@ const VoiceRoom: React.FC<any> = ({
            timestamp: serverTimestamp()
         }).catch(err => {
           console.error("Failed to send entry event:", err);
-          entrySentRef.current = false; // السماح بإعادة المحاولة في حال الفشل
+          entrySentRef.current = false; 
         });
      }
   }, [initialRoom.id, currentUser.id, currentUser.activeEntry]);
@@ -262,7 +259,6 @@ const VoiceRoom: React.FC<any> = ({
       });
     }
 
-    // منطق الحظ الفوري
     let winAmount = 0;
     if (gift.isLucky || gift.category === 'lucky') {
       const isWin = (Math.random() * 100) < (gameSettings.luckyGiftWinRate || 30);
@@ -272,7 +268,6 @@ const VoiceRoom: React.FC<any> = ({
       }
     }
 
-    // تحديث الرصيد المحلي فوراً
     onUpdateUser({ 
       coins: Number(currentUser.coins) - totalCost + winAmount, 
       wealth: Number(currentUser.wealth || 0) + totalCost 
@@ -353,10 +348,11 @@ const VoiceRoom: React.FC<any> = ({
 
   const handleSendMessage = (text: string) => {
     if (!text.trim()) return;
+    // سحب أحدث ليفل مباشرة من currentUser المحدث لحظياً لضمان الربط التام
     const msgData = {
       userId: currentUser.id, userName: currentUser.name,
-      userWealthLevel: currentUser.wealthLevel || calcLevel(Number(currentUser.wealth || 0)),
-      userRechargeLevel: currentUser.rechargeLevel || calcLevel(Number(currentUser.rechargePoints || 0)),
+      userWealthLevel: currentUser.wealthLevel || 1,
+      userRechargeLevel: currentUser.rechargeLevel || 1,
       userAchievements: currentUser.achievements || [], userBubble: currentUser.activeBubble || null,
       userVip: currentUser.isVip || false, content: text, type: 'text', timestamp: serverTimestamp()
     };
@@ -507,8 +503,8 @@ const VoiceRoom: React.FC<any> = ({
       const messageRef = doc(collection(db, 'rooms', initialRoom.id, 'messages'));
       batch.set(messageRef, {
         userId: currentUser.id, userName: currentUser.name,
-        userWealthLevel: currentUser.wealthLevel || calcLevel(Number(currentUser.wealth || 0)),
-        userRechargeLevel: currentUser.rechargeLevel || calcLevel(Number(currentUser.rechargePoints || 0)),
+        userWealthLevel: currentUser.wealthLevel || 1,
+        userRechargeLevel: currentUser.rechargeLevel || 1,
         content: win > 0 ? `أرسل ${gift.name} x${qty} وفاز بـ ${win.toLocaleString()} 🪙!` : `أرسل ${gift.name} x${qty} 🎁`,
         type: 'gift', isLuckyWin: win > 0, timestamp: serverTimestamp()
       });
@@ -552,7 +548,10 @@ const VoiceRoom: React.FC<any> = ({
                 <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} key={msg.id} className="flex items-start gap-2">
                    <div className="flex flex-col items-start">
                       <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
-                         <ChatLevelBadge level={msg.userWealthLevel || 1} type="wealth" /><ChatLevelBadge level={msg.userRechargeLevel || 1} type="recharge" />
+                         {/* تم استبدال الأيقونات بشارات ليفل مطابقة تماماً للبروفايل ومربوطة بالقيم اللحظية */}
+                         <ChatLevelBadge level={msg.userWealthLevel || 1} type="wealth" />
+                         <ChatLevelBadge level={msg.userRechargeLevel || 1} type="recharge" />
+                         
                          <span className={`text-[12px] font-black drop-shadow-lg shrink-0 ${msg.userVip ? 'text-amber-400' : 'text-blue-300'}`}>{msg.userName}</span>
                          <div className="flex items-center gap-1 mr-1">{msg.userAchievements?.slice(0, 5).map((medal: string, idx: number) => (<img key={idx} src={medal} className="w-8 h-8 object-contain filter drop-shadow-md brightness-110" alt="medal" />))}</div>
                       </div>

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Home, User as UserIcon, Plus, Bell, Crown, Gem, Settings, ChevronRight, Edit3, Share2, LogOut, Shield, Database, ShoppingBag, Camera, Trophy, Flame, Sparkles, UserX, Star, ShieldCheck, MapPin, Download, Smartphone, MessageCircle, Languages, Smartphone as MobileIcon, Wallet, Medal, Lock, AlertCircle, Key, X, Zap, BadgeCheck, ChevronLeft, Award, Coins, Users, UserPlus, Eye, Heart, Gamepad2, UserCheck } from 'lucide-react';
 import RoomCard from './components/RoomCard';
@@ -39,10 +40,15 @@ const translations = {
 const ROOT_ADMIN_EMAIL = 'admin-owner@livetalk.com';
 const PERMANENT_LOGO_URL = 'https://storage.googleapis.com/static.aistudio.google.com/stables/2025/03/06/f0e64906-e7e0-4a87-af9b-029e2467d302/f0e64906-e7e0-4a87-af9b-029e2467d302.png';
 
+/**
+ * دالة موحدة لحساب الليفل (حتى المستوى 200).
+ * للوصول لليفل 200 يحتاج المستخدم لـ 2 مليار نقطة.
+ * المعادلة: Level = sqrt(Points / 50,000)
+ */
 const calculateLvl = (pts: number) => {
   if (!pts || pts <= 0) return 1;
-  const l = Math.floor(Math.sqrt(pts) / 200);
-  return Math.max(1, Math.min(100, l));
+  const l = Math.floor(Math.sqrt(pts / 50000)); 
+  return Math.max(1, Math.min(200, l));
 };
 
 const HeaderLevelBadge: React.FC<{ level: number; type: 'wealth' | 'recharge' }> = ({ level, type }) => {
@@ -121,11 +127,17 @@ export default function App() {
 
   const t = translations[language];
 
+  // المالك الحقيقي (جذر النظام)
   const isRootAdmin = useMemo(() => {
     const currentEmail = auth.currentUser?.email?.toLowerCase();
     const isIdOne = user?.customId?.toString() === '1';
     return currentEmail === ROOT_ADMIN_EMAIL.toLowerCase() || isIdOne;
   }, [auth.currentUser?.email, user?.customId]);
+
+  // صلاحية الوصول للوحة الإدارة (مالك أو مشرف مخصص)
+  const canAccessAdmin = useMemo(() => {
+    return isRootAdmin || user?.isSystemModerator;
+  }, [isRootAdmin, user?.isSystemModerator]);
 
   const checkAdminPrivileges = async (loggedInUser: User) => {
     const currentEmail = auth.currentUser?.email?.toLowerCase();
@@ -161,6 +173,8 @@ export default function App() {
       getDoc(doc(db, 'users', parsedUser.id)).then((docSnap) => {
         if (docSnap.exists()) {
           const uData = { id: docSnap.id, ...docSnap.data() } as User;
+          uData.wealthLevel = calculateLvl(uData.wealth || 0);
+          uData.rechargeLevel = calculateLvl(uData.rechargePoints || 0);
           setUser(uData);
           checkAdminPrivileges(uData);
         }
@@ -202,11 +216,20 @@ export default function App() {
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
         const usersData = snapshot.docs.map(doc => {
           const d = doc.data();
-          return { id: doc.id, ...d, wealthLevel: calculateLvl(d.wealth || 0), rechargeLevel: calculateLvl(d.rechargePoints || 0), coins: Number(d.coins || 0), diamonds: Number(d.diamonds || 0) } as User;
+          return { 
+            id: doc.id, 
+            ...d, 
+            wealthLevel: calculateLvl(d.wealth || 0), 
+            rechargeLevel: calculateLvl(d.rechargePoints || 0), 
+            coins: Number(d.coins || 0), 
+            diamonds: Number(d.diamonds || 0) 
+          } as User;
         });
         setUsers(usersData);
-        if (user) {
-          const currentInDb = usersData.find(u => u.id === user.id);
+        
+        const loggedInId = auth.currentUser?.uid;
+        if (loggedInId) {
+          const currentInDb = usersData.find(u => u.id === loggedInId);
           if (currentInDb) {
             setUser(prev => ({ ...currentInDb, ...pendingUserUpdates.current }));
           }
@@ -247,19 +270,33 @@ export default function App() {
     };
   }, []);
 
+  /**
+   * دالة التحديث مع إعادة حساب المستويات لحظياً لضمان الربط التام بين الدردشة والبروفايل
+   */
   const handleUpdateUser = (updatedData: Partial<User>) => {
     if (!user) return;
-    const newUserState = { ...user, ...updatedData };
+    
+    // إنشاء حالة مستخدم جديدة مع حساب المستويات فورياً بناءً على البيانات القادمة
+    let newUserState = { ...user, ...updatedData };
+    
+    if (updatedData.wealth !== undefined) {
+      newUserState.wealthLevel = calculateLvl(newUserState.wealth);
+    }
+    if (updatedData.rechargePoints !== undefined) {
+      newUserState.rechargeLevel = calculateLvl(newUserState.rechargePoints);
+    }
+
     setUser(newUserState);
     pendingUserUpdates.current = { ...pendingUserUpdates.current, ...updatedData };
     
     if (userUpdateTimerRef.current) clearTimeout(userUpdateTimerRef.current);
     userUpdateTimerRef.current = setTimeout(async () => {
-      if (!user) return;
+      const loggedInId = auth.currentUser?.uid;
+      if (!loggedInId) return;
       const dataToSave = { ...pendingUserUpdates.current };
       pendingUserUpdates.current = {};
       try {
-        await updateDoc(doc(db, 'users', user.id), dataToSave);
+        await updateDoc(doc(db, 'users', loggedInId), dataToSave);
       } catch (e) {
         console.error("Background Sync Sync Error:", e);
       }
@@ -415,19 +452,19 @@ export default function App() {
             <div className="mt-6 px-6 grid grid-cols-4 gap-4 pb-20">
                <button className="flex flex-col items-center gap-1"><div className="p-2 bg-white/5 rounded-full"><UserPlus size={16}/></div><span className="text-[9px]">دعوة</span></button>
                <button className="flex flex-col items-center gap-1"><div className="p-2 bg-white/5 rounded-full"><UserX size={16}/></div><span className="text-[9px]">حظر</span></button>
-               <button className="flex flex-col items-center gap-1"><div className="p-2 bg-white/5 rounded-full"><ShieldCheck size={16}/></div><span className="text-[9px]"> خصوصية</span></button>
+               <button className="flex flex-col items-center gap-1"><div className="p-2 bg-white/5 rounded-full"><ShieldCheck size={16}/></div><span className="text-[9px]"> الخصوصية</span></button>
                
                <button 
                   onClick={() => {
-                    if (isRootAdmin) setShowAdminPanel(true);
-                    else alert('ليست لديك صلاحيات المالك 🛡️');
+                    if (canAccessAdmin) setShowAdminPanel(true);
+                    else alert('ليست لديك صلاحيات الإدارة 🛡️');
                   }} 
                   className="flex flex-col items-center gap-1 group active:scale-95 transition-all"
                 >
-                 <div className={`p-2 rounded-full transition-all duration-200 ${isRootAdmin ? 'bg-amber-500 text-black shadow-[0_0_15px_rgba(245,158,11,0.5)]' : 'bg-white/5 text-slate-600'}`}>
-                   <Settings size={16} className={isRootAdmin ? 'animate-spin-slow' : ''} />
+                 <div className={`p-2 rounded-full transition-all duration-200 ${canAccessAdmin ? 'bg-blue-500 text-white shadow-[0_0_15px_rgba(59,130,246,0.5)]' : 'bg-white/5 text-slate-600'} ${isRootAdmin ? '!bg-amber-500 !text-black !shadow-amber-500/50' : ''}`}>
+                   <Settings size={16} className={canAccessAdmin ? 'animate-spin-slow' : ''} />
                  </div>
-                 <span className={`text-[9px] ${isRootAdmin ? 'text-amber-500 font-black' : 'text-slate-600'}`}>إعدادات</span>
+                 <span className={`text-[9px] ${canAccessAdmin ? 'text-blue-400 font-black' : 'text-slate-600'} ${isRootAdmin ? '!text-amber-500' : ''}`}>إعدادات</span>
                </button>
             </div>
             <button onClick={handleLogout} className="mx-8 mb-24 py-3 bg-red-600/10 text-red-500 rounded-xl border border-red-500/20 font-black text-xs">خروج</button>
@@ -474,8 +511,7 @@ export default function App() {
       {showBagModal && <BagModal isOpen={showBagModal} onClose={() => setShowBagModal(false)} items={storeItems} user={user} onBuy={(item) => EconomyEngine.spendCoins(user.id, user.coins, user.wealth, item.price, user.ownedItems || [], item.id, (data) => setUser(prev => prev ? {...prev, ...data} : null))} onEquip={(item) => handleUpdateUser(item.type === 'frame' ? { frame: item.url } : item.type === 'bubble' ? { activeBubble: item.url } : { activeEntry: item.url })} />}
       {showWalletModal && <WalletModal isOpen={showWalletModal} onClose={() => setShowWalletModal(false)} user={user} onExchange={(amt) => EconomyEngine.exchangeDiamonds(user.id, user.coins, user.diamonds, amt, (data) => setUser(prev => prev ? {...prev, ...data} : null))} />}
       
-      {/* Fix: Rename onUpdateUserRoom to onUpdateRoom to align with AdminPanelProps */}
-      {showAdminPanel && isRootAdmin && <AdminPanel isOpen={showAdminPanel} onClose={() => setShowAdminPanel(false)} currentUser={user!} users={users} onUpdateUser={async (id, data) => await updateDoc(doc(db, 'users', id), data)} rooms={rooms} setRooms={setRooms} onUpdateRoom={handleUpdateRoom} gifts={gifts} storeItems={storeItems} vipLevels={vipLevels} gameSettings={gameSettings} setGameSettings={(s) => setDoc(doc(db, 'appSettings', 'games'), { gameSettings: s }, { merge: true })} appBanner={appBanner} onUpdateAppBanner={(url) => setDoc(doc(db, 'appSettings', 'identity'), { appBanner: url }, { merge: true })} appLogo={appLogo} onUpdateAppLogo={(url) => setDoc(doc(db, 'appSettings', 'identity'), { appLogo: url }, { merge: true })} appName={appName} onUpdateAppName={(name) => setDoc(doc(db, 'appSettings', 'identity'), { appName: name }, { merge: true })} authBackground={authBackground} onUpdateAuthBackground={(url) => setDoc(doc(db, 'appSettings', 'identity'), { authBackground: url }, { merge: true })} />}
+      {showAdminPanel && canAccessAdmin && <AdminPanel isOpen={showAdminPanel} onClose={() => setShowAdminPanel(false)} currentUser={user!} users={users} onUpdateUser={async (id, data) => await updateDoc(doc(db, 'users', id), data)} rooms={rooms} setRooms={setRooms} onUpdateRoom={handleUpdateRoom} gifts={gifts} storeItems={storeItems} vipLevels={vipLevels} gameSettings={gameSettings} setGameSettings={(s) => setDoc(doc(db, 'appSettings', 'games'), { gameSettings: s }, { merge: true })} appBanner={appBanner} onUpdateAppBanner={(url) => setDoc(doc(db, 'appSettings', 'identity'), { appBanner: url }, { merge: true })} appLogo={appLogo} onUpdateAppLogo={(url) => setDoc(doc(db, 'appSettings', 'identity'), { appLogo: url }, { merge: true })} appName={appName} onUpdateAppName={(name) => setDoc(doc(db, 'appSettings', 'identity'), { appName: name }, { merge: true })} authBackground={authBackground} onUpdateAuthBackground={(url) => setDoc(doc(db, 'appSettings', 'identity'), { authBackground: url }, { merge: true })} />}
       
       {showCreateRoomModal && <CreateRoomModal isOpen={showCreateRoomModal} onClose={() => setShowCreateRoomModal(false)} onCreate={executeCreateRoom} />}
       {user.isAgency && showAgencyModal && <AgencyRechargeModal isOpen={showAgencyModal} onClose={() => setShowAgencyModal(false)} agentUser={user} users={users} onCharge={(tid, amt) => EconomyEngine.agencyTransfer(user.id, user.agencyBalance!, tid, users.find(u => u.id === tid)?.coins || 0, users.find(u => u.id === tid)?.rechargePoints || 0, amt, (ad, td) => { setUser(prev => prev ? {...prev, ...ad} : null); updateDoc(doc(db, 'users', tid), td); })} />}

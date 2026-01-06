@@ -91,6 +91,8 @@ export interface User {
   isMuted?: boolean;
   isSpecialId?: boolean;
   isAdmin?: boolean;
+  isSystemModerator?: boolean; // مشرف نظام (لوحة التحكم)
+  moderatorPermissions?: string[]; // مصفوفة الـ IDs للأقسام المسموحة
   isAgency?: boolean; 
   agencyBalance?: number;
   isHostAgent?: boolean; 

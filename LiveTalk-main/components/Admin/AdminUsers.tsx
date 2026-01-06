@@ -1,6 +1,5 @@
-
 import React, { useState } from 'react';
-import { Search, Settings2, X, Save, ShieldAlert, Upload, Trash2, ImageIcon, Award, Sparkles, UserMinus, Medal, Lock, Unlock, Clock, Ban, Eraser, Key } from 'lucide-react';
+import { Search, Settings2, X, Save, ShieldAlert, Upload, Trash2, ImageIcon, Award, Sparkles, UserMinus, Medal, Lock, Unlock, Clock, Ban, Eraser, Key, ShieldCheck, Check, Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, VIPPackage } from '../../types';
 import { db } from '../../services/firebase';
@@ -10,7 +9,29 @@ interface AdminUsersProps {
   users: User[];
   vipLevels: VIPPackage[];
   onUpdateUser: (userId: string, data: Partial<User>) => Promise<void>;
+  currentUser: User; // إضافة المستخدم الحالي للتحقق من صلاحياته
 }
+
+const ROOT_ADMIN_EMAIL = 'admin-owner@livetalk.com';
+
+const ADMIN_TABS = [
+  { id: 'users', label: 'الأعضاء' },
+  { id: 'rooms_manage', label: 'إدارة الغرف' },
+  { id: 'defaults', label: 'صور البداية' },
+  { id: 'badges', label: 'أوسمة الشرف' },
+  { id: 'id_badges', label: 'أوسمة الـ ID' },
+  { id: 'host_agency', label: 'وكالات المضيفين' },
+  { id: 'room_bgs', label: 'خلفيات الغرف' },
+  { id: 'mic_skins', label: 'أشكال المايكات' },
+  { id: 'emojis', label: 'الإيموشنات' },
+  { id: 'relationships', label: 'نظام الارتباط' },
+  { id: 'agency', label: 'الوكالات (شحن)' },
+  { id: 'games', label: 'مركز الحظ' },
+  { id: 'gifts', label: 'الهدايا' },
+  { id: 'store', label: 'المتجر' },
+  { id: 'vip', label: 'الـ VIP' },
+  { id: 'identity', label: 'الهوية' },
+];
 
 const compressImage = (base64: string, maxWidth: number, maxHeight: number, quality: number = 0.15): Promise<string> => {
   return new Promise((resolve) => {
@@ -38,7 +59,7 @@ const compressImage = (base64: string, maxWidth: number, maxHeight: number, qual
   });
 };
 
-const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser }) => {
+const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser, currentUser }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [editingFields, setEditingFields] = useState({ 
@@ -51,14 +72,29 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser 
     badge: '',
     cover: '',
     loginPassword: '',
+    isSystemModerator: false,
+    moderatorPermissions: [] as string[],
     achievements: [] as string[]
   });
+
+  // التحقق هل المستخدم الحالي هو المدير العام
+  const isRootAdmin = (currentUser as any).email?.toLowerCase() === ROOT_ADMIN_EMAIL.toLowerCase() || currentUser.customId?.toString() === '1';
 
   const filteredUsers = users.filter(u => 
     u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
     u.customId?.toString().includes(searchQuery) ||
     u.id.includes(searchQuery)
   );
+
+  const togglePermission = (tabId: string) => {
+    if (!isRootAdmin) return; // حماية إضافية
+    const current = [...editingFields.moderatorPermissions];
+    if (current.includes(tabId)) {
+      setEditingFields({ ...editingFields, moderatorPermissions: current.filter(id => id !== tabId) });
+    } else {
+      setEditingFields({ ...editingFields, moderatorPermissions: [...current, tabId] });
+    }
+  };
 
   const handleBan = (durationDays: number | 'permanent') => {
     if (durationDays === 'permanent') {
@@ -112,7 +148,6 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser 
   const handleSave = async () => {
     if (!selectedUser) return;
     try { 
-      // البحث عن باقة الـ VIP المختارة للحصول على رابط الإطار الخاص بها
       const selectedVipPackage = vipLevels.find(v => v.level === editingFields.vipLevel);
       
       const updates: any = { 
@@ -128,12 +163,14 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser 
         achievements: editingFields.achievements.slice(0, 30)
       }; 
 
-      // إذا تم اختيار مستوى VIP، نقوم بتركيب الإطار الخاص به فوراً
+      // فقط المدير العام يمكنه حفظ تعديلات المشرفين
+      if (isRootAdmin) {
+        updates.isSystemModerator = editingFields.isSystemModerator;
+        updates.moderatorPermissions = editingFields.moderatorPermissions;
+      }
+
       if (selectedVipPackage) {
         updates.frame = selectedVipPackage.frameUrl;
-      } else if (editingFields.vipLevel === 0) {
-        // إذا قام الأدمن بإزالة الـ VIP، يفضل ترك الإطار الحالي أو إزالته حسب رغبتك
-        // هنا سنفترض أننا لا نزيله إلا إذا رغب العضو في ذلك، أو يمكنك إضافة: updates.frame = null;
       }
 
       await onUpdateUser(selectedUser.id, updates); 
@@ -144,7 +181,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser 
         await updateDoc(roomRef, { hostCustomId: editingFields.customId });
       }
 
-      alert('تم الحفظ وتثبيت الرتبة بنجاح ✅'); 
+      alert('تم حفظ التعديلات بنجاح ✅'); 
       setSelectedUser(null); 
     } catch (e) { 
       console.error(e);
@@ -174,7 +211,7 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser 
               <tr>
                 <th className="p-5">المستخدم</th>
                 <th className="p-5 text-center">الحالة</th>
-                <th className="p-5 text-center">الرصيد</th>
+                <th className="p-5 text-center">الإدارة</th>
                 <th className="p-5 text-center">الإجراء</th>
               </tr>
             </thead>
@@ -200,7 +237,13 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser 
                     )}
                   </td>
                   <td className="p-5 text-center">
-                    <span className="text-yellow-500 font-black">🪙 {u.coins?.toLocaleString()}</span>
+                    {u.isSystemModerator ? (
+                      <div className="bg-blue-500/10 text-blue-400 px-2 py-1 rounded-md text-[8px] font-black border border-blue-500/20 w-fit mx-auto flex items-center gap-1">
+                        <ShieldCheck size={10} /> مشرف نظام
+                      </div>
+                    ) : (
+                      <span className="text-slate-700">---</span>
+                    )}
                   </td>
                   <td className="p-5 text-center">
                     <button 
@@ -216,6 +259,8 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser 
                           badge: u.badge || '',
                           cover: u.cover || '',
                           loginPassword: u.loginPassword || '',
+                          isSystemModerator: u.isSystemModerator || false,
+                          moderatorPermissions: u.moderatorPermissions || [],
                           achievements: u.achievements || []
                         }); 
                       }} 
@@ -245,6 +290,54 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser 
                </div>
 
                <div className="flex-1 overflow-y-auto p-8 pt-14 space-y-8 text-right">
+                  
+                  {/* قسم تعيين مشرف النظام - محمي للمدير العام فقط */}
+                  {isRootAdmin ? (
+                    <div className="p-6 bg-blue-600/10 rounded-[2rem] border border-blue-500/30 space-y-5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <ShieldCheck className="text-blue-400" size={20} />
+                            <h4 className="text-sm font-black text-white">إدارة رتبة الإشراف</h4>
+                        </div>
+                        <button 
+                          onClick={() => setEditingFields({ ...editingFields, isSystemModerator: !editingFields.isSystemModerator })}
+                          className={`w-12 h-6 rounded-full transition-all relative ${editingFields.isSystemModerator ? 'bg-blue-500' : 'bg-slate-700'}`}
+                        >
+                            <motion.div animate={{ x: editingFields.isSystemModerator ? 24 : 4 }} className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-lg" />
+                        </button>
+                      </div>
+
+                      <AnimatePresence>
+                        {editingFields.isSystemModerator && (
+                          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="space-y-4 pt-2 border-t border-blue-500/20 overflow-hidden">
+                            <p className="text-[10px] text-blue-300 font-bold">حدد الأقسام التي يراها هذا المشرف (تحكم المالك):</p>
+                            <div className="grid grid-cols-2 gap-2">
+                                {ADMIN_TABS.map(tab => (
+                                  <button 
+                                    key={tab.id}
+                                    onClick={() => togglePermission(tab.id)}
+                                    className={`p-2.5 rounded-xl text-[9px] font-black border transition-all flex items-center justify-between ${
+                                      editingFields.moderatorPermissions.includes(tab.id) 
+                                        ? 'bg-blue-600 border-blue-400 text-white shadow-lg' 
+                                        : 'bg-black/40 border-white/5 text-slate-500'
+                                    }`}
+                                  >
+                                    {tab.label}
+                                    {editingFields.moderatorPermissions.includes(tab.id) && <Check size={12} />}
+                                  </button>
+                                ))}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-white/5 rounded-2xl border border-white/5 flex items-center justify-center gap-2 opacity-50">
+                       <Shield size={16} className="text-slate-500" />
+                       <span className="text-[10px] font-black text-slate-500 italic">صلاحية تعديل الرتب محفوظة للمدير العام</span>
+                    </div>
+                  )}
+
                   <button onClick={handleWipeMedia} className="w-full py-3 bg-red-600/20 text-red-500 border border-red-500/30 rounded-2xl text-[10px] font-black flex items-center justify-center gap-2 hover:bg-red-600 hover:text-white transition-all">
                      <Eraser size={14} /> تطهير وسائط الحساب
                   </button>
@@ -275,33 +368,11 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser 
                          placeholder="تعيين كلمة مرور للدخول بالـ ID..." 
                          className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white text-sm outline-none focus:border-blue-500/50"
                        />
-                       <p className="text-[8px] text-slate-500">هذه الكلمة تسمح للمستخدم بالدخول عبر الآيدي فقط دون الحاجة لإيميل.</p>
                     </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 bg-black/30 rounded-3xl border border-white/5 space-y-3">
-                       <label className="text-[10px] font-black text-slate-500 flex items-center gap-2"><Award size={14} className="text-amber-500" /> وسام الـ ID (صورة أو GIF)</label>
-                       <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 bg-slate-800 rounded-xl border border-white/10 flex items-center justify-center overflow-hidden">{editingFields.badge ? <img src={editingFields.badge} className="w-full h-full object-contain" /> : <Ban size={16} className="text-slate-700" />}</div>
-                          <label className="flex-1 flex items-center justify-center gap-2 py-2 bg-blue-600/10 text-blue-400 rounded-xl text-[9px] font-black cursor-pointer hover:bg-blue-600 hover:text-white transition-all"><Upload size={12} /> رفع<input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, 'badge')} /></label>
-                       </div>
-                    </div>
-                    <div className="p-4 bg-black/30 rounded-3xl border border-white/5 space-y-3">
-                       <label className="text-[10px] font-black text-slate-500 flex items-center gap-2"><ImageIcon size={14} className="text-indigo-400" /> الغلاف (صورة أو GIF)</label>
-                       <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 bg-slate-800 rounded-xl border border-white/10 flex items-center justify-center overflow-hidden">{editingFields.cover ? <img src={editingFields.cover} className="w-full h-full object-cover" /> : <Ban size={16} className="text-slate-700" />}</div>
-                          <label className="flex-1 flex items-center justify-center gap-2 py-2 bg-indigo-600/10 text-indigo-400 rounded-xl text-[9px] font-black cursor-pointer hover:bg-indigo-600 hover:text-white transition-all"><Upload size={12} /> رفع<input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, 'cover')} /></label>
-                       </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4">
-                     <div className="space-y-1"><label className="text-[10px] font-black text-slate-500">الـ ID المخصص (Account ID)</label><input type="text" value={editingFields.customId} onChange={e => setEditingFields({...editingFields, customId: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-emerald-400 font-black text-sm outline-none text-center" /></div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
-                     <div className="space-y-1"><label className="text-[10px] font-black text-slate-500">رصيد الكوينز 🪙</label><input type="number" value={editingFields.coins} onChange={e => setEditingFields({...editingFields, coins: parseInt(e.target.value) || 0})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-yellow-400 font-black text-sm outline-none text-center" /></div>
+                     <div className="space-y-1"><label className="text-[10px] font-black text-slate-500">رصيد الكوينز 🪙</label><input type="number" value={editingFields.coins} onChange={e => setEditingFields({...editingFields, coins: parseInt(e.target.value) || 0})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-yellow-500 font-black text-sm outline-none text-center" /></div>
                      <div className="space-y-1"><label className="text-[10px] font-black text-slate-500">الـ VIP 👑</label><select value={editingFields.vipLevel} onChange={e => setEditingFields({...editingFields, vipLevel: parseInt(e.target.value)})} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white text-xs font-black outline-none text-center appearance-none">
                         <option value={0}>بدون</option>
                         {vipLevels.sort((a,b)=>a.level-b.level).map(v => <option key={v.level} value={v.level}>{v.name}</option>)}

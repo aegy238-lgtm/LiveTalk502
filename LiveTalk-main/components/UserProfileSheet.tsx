@@ -15,12 +15,6 @@ interface UserProfileSheetProps {
   currentRoom: Room; 
 }
 
-const calculateLevel = (points: number) => {
-  if (!points || points <= 0) return 1;
-  const lvl = Math.floor(Math.sqrt(points) / 200);
-  return Math.max(1, Math.min(100, lvl));
-};
-
 const ProfileLevelBadge: React.FC<{ level: number; type: 'wealth' | 'recharge' }> = ({ level, type }) => {
   const isWealth = type === 'wealth';
   return (
@@ -50,6 +44,8 @@ const ProfileLevelBadge: React.FC<{ level: number; type: 'wealth' | 'recharge' }
 const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, onClose, isCurrentUser, onAction, currentUser, allUsers = [], currentRoom }) => {
   const [showAdminMenu, setShowAdminMenu] = useState(false);
   
+  // استخدام useMemo للبحث عن أحدث بيانات للمستخدم من القائمة الموحدة (allUsers)
+  // هذا يضمن أن الليفل يتحدث فوراً في البروفايل عند الشحن أو إرسال الهدايا
   const user = useMemo(() => {
     const latest = allUsers.find(u => u.id === initialUser.id);
     return latest || initialUser;
@@ -59,8 +55,9 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
   const isModerator = currentRoom.moderators?.includes(currentUser.id);
   const canManage = (isHost || isModerator) && !isCurrentUser;
 
-  const wealthLvl = calculateLevel(Number(user.wealth || 0));
-  const rechargeLvl = calculateLevel(Number(user.rechargePoints || 0));
+  // الاعتماد على الليفل المحسوب مسبقاً في App.tsx والموجود في كائن المستخدم
+  const wealthLvl = user.wealthLevel || 1;
+  const rechargeLvl = user.rechargeLevel || 1;
 
   return (
     <div className="fixed inset-0 z-[160] flex items-end justify-center p-0 font-cairo">
@@ -80,18 +77,15 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
         className="relative w-full max-w-md bg-[#030816] rounded-t-[3rem] border-t border-white/10 shadow-[0_-20px_60px_rgba(0,0,0,0.9)] flex flex-col overflow-hidden h-[85vh]"
         dir="rtl"
       >
-        {/* Full Background Layer - This makes the cover fill the whole sheet */}
         <div className="absolute inset-0 z-0">
           {user.cover ? (
             <img src={user.cover} className="w-full h-full object-cover opacity-40" alt="background" />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-indigo-950 via-slate-900 to-[#030816]"></div>
           )}
-          {/* Darker overlay to ensure content is readable */}
           <div className="absolute inset-0 bg-gradient-to-t from-[#030816] via-[#030816]/70 to-black/20"></div>
         </div>
 
-        {/* Top Header Section (Z-INDEX 20) */}
         <div className="relative z-20 h-44 w-full shrink-0">
           <div className="absolute top-6 right-6 flex items-center gap-2">
              <button onClick={onClose} className="p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 transition-all">
@@ -119,7 +113,6 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
              )}
           </div>
 
-          {/* Avatar Position - Still Overlapping but on top of full background */}
           <div className="absolute bottom-2 left-8">
             <div className="relative w-28 h-28">
               <div className="w-full h-full rounded-full border-4 border-[#030816] overflow-hidden bg-slate-800 shadow-2xl">
@@ -132,10 +125,7 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
           </div>
         </div>
 
-        {/* Scrollable Content (Z-INDEX 20) */}
         <div className="relative z-20 flex-1 px-8 pt-6 pb-10 space-y-6 overflow-y-auto scrollbar-hide">
-          
-          {/* CP Relationship Box */}
           {user.cpPartner && (
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }}
@@ -153,7 +143,6 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
             </motion.div>
           )}
 
-          {/* User Name & ID & Level Badges Section */}
           <div className="text-right space-y-4">
             <div className="flex items-center justify-start gap-3 flex-wrap flex-row-reverse">
                 <h2 className="text-3xl font-black text-white tracking-tight drop-shadow-lg">{user.name}</h2>
@@ -163,7 +152,6 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
                 </div>
             </div>
             
-            {/* ID Badge Display */}
             <button 
               onClick={() => { navigator.clipboard.writeText(user.customId || user.id); alert('تم نسخ الـ ID'); }}
               className="relative inline-flex items-center justify-center min-h-[32px]"
@@ -181,7 +169,6 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
             </button>
           </div>
 
-          {/* Achievements / Medals Display - Natural Look & Larger Size */}
           <div className="pt-2">
              <div className="flex flex-wrap gap-4 items-center">
                 {user.achievements && user.achievements.length > 0 ? (
@@ -204,7 +191,6 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
              </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="flex gap-4 pt-6">
              <button 
                onClick={() => onAction('gift')}
@@ -225,7 +211,6 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
         </div>
       </motion.div>
 
-      {/* Admin Quick Actions Menu */}
       <AnimatePresence>
         {showAdminMenu && (
           <motion.div 

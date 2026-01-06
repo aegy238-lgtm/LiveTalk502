@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
@@ -40,7 +39,6 @@ interface AdminPanelProps {
   storeItems: StoreItem[];
   vipLevels: VIPPackage[];
   gameSettings: GameSettings;
-  // Fix: Changed return type from void to Promise<void> to align with Firestore setDoc used in App.tsx
   setGameSettings: (settings: GameSettings) => Promise<void>;
   appBanner: string;
   onUpdateAppBanner: (url: string) => void;
@@ -77,13 +75,41 @@ const compressImage = (base64: string, maxWidth: number, maxHeight: number, qual
 };
 
 const AdminPanel: React.FC<AdminPanelProps> = (props) => {
-  const [activeTab, setActiveTab] = useState<string>('users');
-
   const currentEmail = (props.currentUser as any).email?.toLowerCase() || '';
   const isIdOne = props.currentUser.customId?.toString() === '1';
-  const hasAccess = currentEmail === ROOT_ADMIN_EMAIL.toLowerCase() || isIdOne;
+  const isRootAdmin = currentEmail === ROOT_ADMIN_EMAIL.toLowerCase() || isIdOne;
+  const isModerator = props.currentUser.isSystemModerator;
 
-  if (!props.isOpen || !hasAccess) return null;
+  const menuItems = [
+    { id: 'users', label: 'الأعضاء', icon: Users, color: 'text-blue-400' },
+    { id: 'rooms_manage', label: 'إدارة الغرف', icon: Home, color: 'text-red-500' },
+    { id: 'defaults', label: 'صور البداية', icon: UserCircle, color: 'text-indigo-400' },
+    { id: 'badges', label: 'أوسمة الشرف', icon: Medal, color: 'text-yellow-500' },
+    { id: 'id_badges', label: 'أوسمة الـ ID', icon: IdCard, color: 'text-blue-500' },
+    { id: 'host_agency', label: 'وكالات المضيفين', icon: Building, color: 'text-emerald-400' },
+    { id: 'room_bgs', label: 'خلفيات الغرف', icon: ImageIcon, color: 'text-indigo-400' },
+    { id: 'mic_skins', label: 'أشكال المايكات', icon: Layout, color: 'text-indigo-500' },
+    { id: 'emojis', label: 'الإيموشنات', icon: Smile, color: 'text-yellow-400' },
+    { id: 'relationships', label: 'نظام الارتباط', icon: Heart, color: 'text-pink-500' },
+    { id: 'agency', label: 'الوكالات (شحن)', icon: Zap, color: 'text-orange-500' },
+    { id: 'games', label: 'مركز الحظ', icon: Activity, color: 'text-orange-400' },
+    { id: 'gifts', label: 'الهدايا', icon: GiftIcon, color: 'text-pink-400' },
+    { id: 'store', label: 'المتجر', icon: ShoppingBag, color: 'text-cyan-400' },
+    { id: 'vip', label: 'الـ VIP', icon: Crown, color: 'text-amber-400' },
+    { id: 'identity', label: 'الهوية', icon: Smartphone, color: 'text-emerald-400' },
+    { id: 'maintenance', label: 'الصيانة', icon: Eraser, color: 'text-red-500' },
+  ];
+
+  // فلترة القائمة بناءً على الصلاحيات
+  const allowedMenuItems = menuItems.filter(item => {
+    if (isRootAdmin) return true; // المالك يرى كل شيء
+    if (isModerator && props.currentUser.moderatorPermissions?.includes(item.id)) return true; // المشرف يرى ما خُصص له
+    return false;
+  });
+
+  const [activeTab, setActiveTab] = useState<string>(allowedMenuItems[0]?.id || 'users');
+
+  if (!props.isOpen || (!isRootAdmin && !isModerator)) return null;
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, callback: (url: string) => void, w: number, h: number) => {
     const file = e.target.files?.[0];
@@ -116,41 +142,22 @@ const AdminPanel: React.FC<AdminPanelProps> = (props) => {
     }
   };
 
-  // Fix: Create wrapper to handle Partial updates and return Promise to satisfy AdminEmojis/AdminRelationships/AdminGames requirements
   const handleUpdateGameSettings = async (updates: Partial<GameSettings>) => {
     const newSettings = { ...props.gameSettings, ...updates };
     await props.setGameSettings(newSettings);
   };
 
-  const menuItems = [
-    { id: 'users', label: 'الأعضاء', icon: Users, color: 'text-blue-400' },
-    { id: 'rooms_manage', label: 'إدارة الغرف', icon: Home, color: 'text-red-500' },
-    { id: 'defaults', label: 'صور البداية', icon: UserCircle, color: 'text-indigo-400' },
-    { id: 'badges', label: 'أوسمة الشرف', icon: Medal, color: 'text-yellow-500' },
-    { id: 'id_badges', label: 'أوسمة الـ ID', icon: IdCard, color: 'text-blue-500' },
-    { id: 'host_agency', label: 'وكالات المضيفين', icon: Building, color: 'text-emerald-400' },
-    { id: 'room_bgs', label: 'خلفيات الغرف', icon: ImageIcon, color: 'text-indigo-400' },
-    { id: 'mic_skins', label: 'أشكال المايكات', icon: Layout, color: 'text-indigo-500' },
-    { id: 'emojis', label: 'الإيموشنات', icon: Smile, color: 'text-yellow-400' },
-    { id: 'relationships', label: 'نظام الارتباط', icon: Heart, color: 'text-pink-500' },
-    { id: 'agency', label: 'الوكالات (شحن)', icon: Zap, color: 'text-orange-500' },
-    { id: 'games', label: 'مركز الحظ', icon: Activity, color: 'text-orange-400' },
-    { id: 'gifts', label: 'الهدايا', icon: GiftIcon, color: 'text-pink-400' },
-    { id: 'store', label: 'المتجر', icon: ShoppingBag, color: 'text-cyan-400' },
-    { id: 'vip', label: 'الـ VIP', icon: Crown, color: 'text-amber-400' },
-    { id: 'identity', label: 'الهوية', icon: Smartphone, color: 'text-emerald-400' },
-    { id: 'maintenance', label: 'الصيانة', icon: Eraser, color: 'text-red-500' },
-  ];
-
   return (
     <div className="fixed inset-0 z-[2000] bg-[#020617] flex flex-col md:flex-row font-cairo overflow-hidden text-right" dir="rtl">
       <div className="w-full md:w-64 bg-slate-950 border-l border-white/5 flex flex-col shrink-0 shadow-2xl z-10">
         <div className="p-6 border-b border-white/5 flex items-center justify-between">
-          <div className="flex items-center gap-3"><span className="font-black text-white">التحكم المطلق</span></div>
+          <div className="flex items-center gap-3">
+             <span className="font-black text-white">{isRootAdmin ? 'المدير العام' : 'لوحة المشرف'}</span>
+          </div>
           <button onClick={props.onClose} className="text-slate-400 p-2"><X size={24}/></button>
         </div>
         <nav className="flex md:flex-col p-3 gap-1 overflow-x-auto md:overflow-y-auto custom-scrollbar scrollbar-hide">
-          {menuItems.map(item => (
+          {allowedMenuItems.map(item => (
             <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all ${activeTab === item.id ? 'bg-white/10 text-white' : 'text-slate-500 hover:bg-white/5'}`}>
               <item.icon size={18} className={activeTab === item.id ? item.color : ''} />
               <span className="text-xs font-black">{item.label}</span>
@@ -160,7 +167,7 @@ const AdminPanel: React.FC<AdminPanelProps> = (props) => {
       </div>
 
       <div className="flex-1 bg-slate-900/40 overflow-y-auto p-6 md:p-10 custom-scrollbar transition-all duration-100">
-        {activeTab === 'users' && <AdminUsers users={props.users} vipLevels={props.vipLevels} onUpdateUser={props.onUpdateUser} />}
+        {activeTab === 'users' && <AdminUsers users={props.users} vipLevels={props.vipLevels} onUpdateUser={props.onUpdateUser} currentUser={props.currentUser} />}
         {activeTab === 'rooms_manage' && <AdminRooms rooms={props.rooms} />}
         {activeTab === 'defaults' && <AdminDefaults handleFileUpload={handleFileUpload} />}
         {activeTab === 'badges' && <AdminBadges users={props.users} onUpdateUser={props.onUpdateUser} />}
@@ -169,7 +176,6 @@ const AdminPanel: React.FC<AdminPanelProps> = (props) => {
         {activeTab === 'room_bgs' && <AdminBackgrounds handleFileUpload={handleFileUpload} />}
         {activeTab === 'mic_skins' && <AdminMicSkins handleFileUpload={handleFileUpload} />}
         {activeTab === 'agency' && <AdminAgency users={props.users} onUpdateUser={props.onUpdateUser} />}
-        {/* Fix: Replaced props.setGameSettings with handleUpdateGameSettings to match component prop types */}
         {activeTab === 'emojis' && <AdminEmojis gameSettings={props.gameSettings} onUpdateGameSettings={handleUpdateGameSettings} handleFileUpload={handleFileUpload} />}
         {activeTab === 'relationships' && <AdminRelationships gameSettings={props.gameSettings} onUpdateGameSettings={handleUpdateGameSettings} handleFileUpload={handleFileUpload} />}
         {activeTab === 'games' && <AdminGames gameSettings={props.gameSettings} onUpdateGameSettings={handleUpdateGameSettings} handleFileUpload={handleFileUpload} />}
