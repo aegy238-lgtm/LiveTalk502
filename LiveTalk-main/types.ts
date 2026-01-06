@@ -1,4 +1,3 @@
-
 export enum UserLevel {
   NEW = 'جديد',
   BRONZE = 'برونزي',
@@ -15,7 +14,19 @@ export interface StoreItem {
   name: string;
   type: ItemType;
   price: number;
-  url: string;
+  url: string; // للمقاطع أو الصور الأصلية
+  thumbnailUrl?: string; // صورة المعاينة في المتجر
+}
+
+// Added VIPPackage interface to fix export errors across the application
+export interface VIPPackage {
+  id?: string;
+  level: number;
+  name: string;
+  cost: number;
+  color: string;
+  frameUrl: string;
+  nameStyle: string;
 }
 
 export interface InventoryItem {
@@ -42,25 +53,6 @@ export interface HostAgency {
   totalProduction: number;
 }
 
-export interface BombLevel {
-  threshold: number;
-  giftId: string;
-}
-
-export interface BombSettings {
-  levels: BombLevel[];
-}
-
-export interface BombEvent {
-  id: string;
-  level: number;
-  threshold: number;
-  giftsPool: string[]; // IDs of gifts in this bomb
-  claimedBy: string[]; // User IDs who already claimed
-  status: 'active' | 'expired';
-  timestamp: any;
-}
-
 export interface User {
   id: string;
   customId: any; 
@@ -72,6 +64,7 @@ export interface User {
   rechargePoints?: number;
   frame?: string;
   activeBubble?: string;
+  activeEntry?: string; // الدخولية النشطة
   badge?: string;
   achievements?: string[];
   cover?: string;
@@ -112,8 +105,8 @@ export interface User {
   cpPartner?: CPPartner | null;
   friendPartner?: CPPartner | null; 
   loginPassword?: string; 
-  email?: string; // New field for linked email
-  authPassword?: string; // New field for linked password
+  email?: string;
+  authPassword?: string;
   roomTemplate?: {
     title: string;
     category: string;
@@ -166,29 +159,6 @@ export interface Gift {
   duration?: number; 
   isLucky?: boolean;
   category?: 'popular' | 'exclusive' | 'lucky' | 'celebrity' | 'trend';
-}
-
-export interface VIPPackage {
-  level: number;
-  name: string;
-  cost: number;
-  frameUrl: string;
-  color: string;
-  nameStyle: string;
-}
-
-export interface ChatMessage {
-  id: string;
-  userId: string;
-  userName: string;
-  userLevel: UserLevel;
-  userNameStyle?: string;
-  content: string;
-  type: 'text' | 'gift' | 'system';
-  giftData?: Gift;
-  bubbleUrl?: string;
-  isLuckyWin?: boolean;
-  winAmount?: number;
 }
 
 export interface Room {

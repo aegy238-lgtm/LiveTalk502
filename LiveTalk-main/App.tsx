@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Home, User as UserIcon, Plus, Bell, Crown, Gem, Settings, ChevronRight, Edit3, Share2, LogOut, Shield, Database, ShoppingBag, Camera, Trophy, Flame, Sparkles, UserX, Star, ShieldCheck, MapPin, Download, Smartphone, MessageCircle, Languages, Smartphone as MobileIcon, Wallet, Medal, Lock, AlertCircle, Key, X, Zap, BadgeCheck, ChevronLeft, Award, Coins, Users, UserPlus, Eye, Heart, Gamepad2, UserCheck } from 'lucide-react';
 import RoomCard from './components/RoomCard';
@@ -171,13 +170,11 @@ export default function App() {
       setInitializing(false);
     }
 
-    // مراقبة الإعلانات العالمية (الشرايط)
     const qAnnouncements = query(collection(db, 'global_announcements'), orderBy('timestamp', 'desc'), limit(1));
     const unsubAnnouncements = onSnapshot(qAnnouncements, (snapshot) => {
       if (!snapshot.empty) {
         const data = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as GlobalAnnouncement;
         const msgTime = data.timestamp?.toMillis ? data.timestamp.toMillis() : Date.now();
-        // إظهار الشريط فقط إذا كان جديداً (آخر 10 ثوانٍ) ولم يظهر من قبل
         if (Date.now() - msgTime < 10000 && data.id !== lastAnnouncementId.current) {
           lastAnnouncementId.current = data.id;
           setAnnouncement(data);
@@ -227,13 +224,17 @@ export default function App() {
       setGifts(giftsData.length > 0 ? giftsData : DEFAULT_GIFTS);
     });
 
-    // إضافة المستمع للمتجر (إطارات وفقاعات)
     const unsubStore = onSnapshot(collection(db, 'store'), (snapshot) => {
-      const storeData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StoreItem));
-      setStoreItems(storeData.length > 0 ? storeData : DEFAULT_STORE_ITEMS);
+      const customItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StoreItem));
+      const mergedItems = [...customItems];
+      DEFAULT_STORE_ITEMS.forEach(def => {
+        if (!mergedItems.find(m => m.id === def.id)) {
+          mergedItems.push(def);
+        }
+      });
+      setStoreItems(mergedItems);
     });
 
-    // إضافة المستمع للـ VIP
     const unsubVip = onSnapshot(collection(db, 'vip'), (snapshot) => {
       const vipData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as VIPPackage));
       setVipLevels(vipData.length > 0 ? vipData : DEFAULT_VIP_LEVELS);
@@ -326,18 +327,13 @@ export default function App() {
 
   const handleBuyVIP = (vip: VIPPackage) => {
     if (!user) return;
-    
-    // إغلاق النافذة فوراً لتحسين الاستجابة
     setShowVIPModal(false);
-
-    // تنفيذ الشراء في الخلفية (محلياً فوراً ومزامنة خلفية)
     const success = EconomyEngine.buyVIP(user.id, user.coins, user.wealth, vip, (updatedData) => {
         setUser(prev => prev ? { ...prev, ...updatedData } : null);
     });
-
     if (!success) {
       alert('عذراً، رصيدك غير كافٍ لتفعيل هذه الرتبة 🪙');
-      setShowVIPModal(true); // إعادة فتح النافذة إذا فشل الرصيد
+      setShowVIPModal(true); 
     }
   };
 
@@ -452,8 +448,21 @@ export default function App() {
       </div>
 
       <AnimatePresence>
-        {currentRoom && !isRoomMinimized && (
-          <VoiceRoom room={currentRoom} currentUser={user!} onUpdateUser={handleUpdateUser} onLeave={handleRoomLeave} onMinimize={() => setIsRoomMinimized(true)} gifts={gifts} onEditProfile={() => setShowEditProfileModal(true)} gameSettings={gameSettings} onUpdateRoom={handleUpdateRoom} isMuted={isUserMuted} onToggleMute={() => setIsUserMuted(!isUserMuted)} users={users} onOpenPrivateChat={setPrivateChatPartner} giftCategoryLabels={giftCategoryLabels} />
+        {currentRoom && (
+          <motion.div 
+            key="voice-room-wrapper"
+            initial={{ y: "100%" }}
+            animate={{ 
+              y: isRoomMinimized ? "100%" : "0%",
+              opacity: isRoomMinimized ? 0 : 1
+            }}
+            exit={{ y: "100%" }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="fixed inset-0 z-[150] overflow-hidden"
+            style={{ pointerEvents: isRoomMinimized ? 'none' : 'auto' }}
+          >
+            <VoiceRoom room={currentRoom} currentUser={user!} onUpdateUser={handleUpdateUser} onLeave={handleRoomLeave} onMinimize={() => setIsRoomMinimized(true)} gifts={gifts} onEditProfile={() => setShowEditProfileModal(true)} gameSettings={gameSettings} onUpdateRoom={handleUpdateRoom} isMuted={isUserMuted} onToggleMute={() => setIsUserMuted(!isUserMuted)} users={users} onOpenPrivateChat={setPrivateChatPartner} giftCategoryLabels={giftCategoryLabels} />
+          </motion.div>
         )}
       </AnimatePresence>
       
@@ -462,9 +471,10 @@ export default function App() {
       {showGlobalLeaderboard && <GlobalLeaderboardModal isOpen={showGlobalLeaderboard} onClose={() => setShowGlobalLeaderboard(false)} users={users} />}
       {showVIPModal && <VIPModal user={user} vipLevels={vipLevels} onClose={() => setShowVIPModal(false)} onBuy={handleBuyVIP} />}
       {showEditProfileModal && <EditProfileModal isOpen={showEditProfileModal} onClose={() => setShowEditProfileModal(false)} currentUser={user} onSave={handleUpdateUser} />}
-      {showBagModal && <BagModal isOpen={showBagModal} onClose={() => setShowBagModal(false)} items={storeItems} user={user} onBuy={(item) => EconomyEngine.spendCoins(user.id, user.coins, user.wealth, item.price, user.ownedItems || [], item.id, (data) => setUser(prev => prev ? {...prev, ...data} : null))} onEquip={(item) => handleUpdateUser(item.type === 'frame' ? { frame: item.url } : { activeBubble: item.url })} />}
+      {showBagModal && <BagModal isOpen={showBagModal} onClose={() => setShowBagModal(false)} items={storeItems} user={user} onBuy={(item) => EconomyEngine.spendCoins(user.id, user.coins, user.wealth, item.price, user.ownedItems || [], item.id, (data) => setUser(prev => prev ? {...prev, ...data} : null))} onEquip={(item) => handleUpdateUser(item.type === 'frame' ? { frame: item.url } : item.type === 'bubble' ? { activeBubble: item.url } : { activeEntry: item.url })} />}
       {showWalletModal && <WalletModal isOpen={showWalletModal} onClose={() => setShowWalletModal(false)} user={user} onExchange={(amt) => EconomyEngine.exchangeDiamonds(user.id, user.coins, user.diamonds, amt, (data) => setUser(prev => prev ? {...prev, ...data} : null))} />}
       
+      {/* Fix: Rename onUpdateUserRoom to onUpdateRoom to align with AdminPanelProps */}
       {showAdminPanel && isRootAdmin && <AdminPanel isOpen={showAdminPanel} onClose={() => setShowAdminPanel(false)} currentUser={user!} users={users} onUpdateUser={async (id, data) => await updateDoc(doc(db, 'users', id), data)} rooms={rooms} setRooms={setRooms} onUpdateRoom={handleUpdateRoom} gifts={gifts} storeItems={storeItems} vipLevels={vipLevels} gameSettings={gameSettings} setGameSettings={(s) => setDoc(doc(db, 'appSettings', 'games'), { gameSettings: s }, { merge: true })} appBanner={appBanner} onUpdateAppBanner={(url) => setDoc(doc(db, 'appSettings', 'identity'), { appBanner: url }, { merge: true })} appLogo={appLogo} onUpdateAppLogo={(url) => setDoc(doc(db, 'appSettings', 'identity'), { appLogo: url }, { merge: true })} appName={appName} onUpdateAppName={(name) => setDoc(doc(db, 'appSettings', 'identity'), { appName: name }, { merge: true })} authBackground={authBackground} onUpdateAuthBackground={(url) => setDoc(doc(db, 'appSettings', 'identity'), { authBackground: url }, { merge: true })} />}
       
       {showCreateRoomModal && <CreateRoomModal isOpen={showCreateRoomModal} onClose={() => setShowCreateRoomModal(false)} onCreate={executeCreateRoom} />}

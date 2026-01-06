@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ShoppingBag, Check, MessageSquare, Image as ImageIcon, Coins, Sparkles, Wand2, Trash2 } from 'lucide-react';
+// Added Video to imports to fix "Cannot find name 'Video'" error
+import { X, ShoppingBag, Check, MessageSquare, Image as ImageIcon, Coins, Sparkles, Wand2, Trash2, LogIn, Video } from 'lucide-react';
 import { StoreItem, User, ItemType } from '../types';
 
 interface BagModalProps {
@@ -13,16 +14,17 @@ interface BagModalProps {
 }
 
 const BagModal: React.FC<BagModalProps> = ({ isOpen, onClose, items, user, onBuy, onEquip }) => {
-  const [activeTab, setActiveTab] = useState<'frame' | 'bubble'>('frame');
+  const [activeTab, setActiveTab] = useState<'frame' | 'bubble' | 'entry'>('frame');
   const [actionEffect, setActionEffect] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const filteredItems = items.filter(item => item.type === activeTab);
 
-  const tabs: { id: 'frame' | 'bubble', label: string, icon: any }[] = [
+  const tabs: { id: 'frame' | 'bubble' | 'entry', label: string, icon: any }[] = [
     { id: 'frame', label: 'الإطارات', icon: ImageIcon },
-    { id: 'bubble', label: 'الفقاعات', icon: MessageSquare }
+    { id: 'bubble', label: 'الفقاعات', icon: MessageSquare },
+    { id: 'entry', label: 'الدخوليات', icon: LogIn }
   ];
 
   const handleInstantBuy = (item: StoreItem) => {
@@ -31,26 +33,18 @@ const BagModal: React.FC<BagModalProps> = ({ isOpen, onClose, items, user, onBuy
       alert('عذراً، رصيدك لا يكفي لشراء هذا المنتج 🪙');
       return;
     }
-    
-    // تأثير بصري فوري
     setActionEffect(item.id);
     setTimeout(() => setActionEffect(null), 1500);
-    
-    // تنفيذ الشراء في الخلفية
     onBuy(item);
   };
 
   const handleInstantEquip = (item: StoreItem) => {
-    // تأثير بصري فوري (الشرارات)
     setActionEffect(item.id);
     setTimeout(() => setActionEffect(null), 1500);
-    
-    // استدعاء وظيفة التجهيز (تحدث فوراً في الحالة المحلية عبر App.tsx)
     onEquip(item);
   };
 
-  const handleUnequip = (type: 'frame' | 'bubble') => {
-    // إرسال كائن وهمي برابط فارغ لإزالة الإطار أو الفقاعة
+  const handleUnequip = (type: 'frame' | 'bubble' | 'entry') => {
     onEquip({ type, url: '' } as any);
   };
 
@@ -62,7 +56,8 @@ const BagModal: React.FC<BagModalProps> = ({ isOpen, onClose, items, user, onBuy
         initial={{ scale: 0.9, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.9, opacity: 0, y: 20 }}
-        className="relative w-full max-w-sm bg-gradient-to-br from-[#0f172a] via-[#1a1f35] to-[#020617] rounded-[2.5rem] border border-blue-500/30 shadow-[0_0_60px_rgba(37,99,235,0.25)] overflow-hidden flex flex-col h-[80vh]"
+        className="relative w-full max-w-sm bg-gradient-to-br from-[#0f172a] via-[#1a1f35] to-[#020617] rounded-[2.5rem] border border-blue-500/30 shadow-[0_0_60px_rgba(37,99,235,0.25)] overflow-hidden flex flex-col h-[80vh] font-cairo"
+        dir="rtl"
       >
         {/* Header Section */}
         <div className="relative p-6 text-center border-b border-white/5 flex-shrink-0 bg-white/5">
@@ -108,7 +103,12 @@ const BagModal: React.FC<BagModalProps> = ({ isOpen, onClose, items, user, onBuy
            <div className="grid grid-cols-2 gap-3.5 pb-20">
              {filteredItems.map((item) => {
                const isOwned = Array.isArray(user.ownedItems) && user.ownedItems.includes(item.id);
-               const isEquipped = item.type === 'frame' ? (user.frame === item.url && item.url !== '') : (user.activeBubble === item.url && item.url !== '');
+               
+               let isEquipped = false;
+               if (item.type === 'frame') isEquipped = user.frame === item.url && item.url !== '';
+               if (item.type === 'bubble') isEquipped = user.activeBubble === item.url && item.url !== '';
+               if (item.type === 'entry') isEquipped = user.activeEntry === item.url && item.url !== '';
+
                const canAfford = Number(user.coins || 0) >= item.price;
                const isActivating = actionEffect === item.id;
 
@@ -130,16 +130,20 @@ const BagModal: React.FC<BagModalProps> = ({ isOpen, onClose, items, user, onBuy
                             <img src={user.avatar} className="absolute inset-1 rounded-full w-[88%] h-[88%] object-cover opacity-30 grayscale" alt="preview" />
                             <img src={item.url} className="absolute inset-0 w-full h-full object-contain drop-shadow-2xl scale-[1.25]" alt={item.name} />
                          </div>
-                      ) : (
+                      ) : item.type === 'bubble' ? (
                          <div 
                            className="w-16 h-12 rounded-xl flex items-center justify-center text-[8px] text-white font-black shadow-lg border border-white/10 overflow-hidden text-center bg-cover bg-center"
                            style={{ backgroundImage: `url(${item.url})` }}
                          >
                             {item.name}
                          </div>
+                      ) : (
+                         <div className="relative w-16 h-16 rounded-2xl overflow-hidden flex items-center justify-center bg-slate-800">
+                            <img src={item.thumbnailUrl || item.url} className="w-full h-full object-cover opacity-80" />
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/20"><Video size={16} className="text-white" /></div>
+                         </div>
                       )}
                       
-                      {/* Immediate Success Effect */}
                       <AnimatePresence>
                         {isActivating && (
                           <motion.div 
@@ -154,17 +158,14 @@ const BagModal: React.FC<BagModalProps> = ({ isOpen, onClose, items, user, onBuy
                       </AnimatePresence>
                    </div>
 
-                   {/* Info */}
                    <div className="text-center w-full">
                       <h3 className="font-black text-[11px] text-white truncate px-1">{item.name}</h3>
                    </div>
 
-                   {/* Instant Action Buttons */}
                    <div className="w-full mt-auto">
                       {isEquipped ? (
                          <button 
-                            // Fix: Although filteredItems ensures item.type is 'frame' | 'bubble', explicit casting is needed to satisfy handleUnequip's specific signature due to ItemType being broader.
-                            onClick={() => handleUnequip(item.type as 'frame' | 'bubble')}
+                            onClick={() => handleUnequip(item.type as any)}
                             className="w-full py-2.5 bg-red-500/20 text-red-400 text-[10px] font-black rounded-xl border border-red-500/20 flex items-center justify-center gap-1.5 shadow-inner hover:bg-red-500/30 transition-all active:scale-95"
                          >
                             <Trash2 size={12} /> إزالة
@@ -200,7 +201,6 @@ const BagModal: React.FC<BagModalProps> = ({ isOpen, onClose, items, user, onBuy
            </div>
         </div>
 
-        {/* Footer info */}
         <div className="p-3 bg-black/60 border-t border-white/5 text-center flex-shrink-0">
            <p className="text-[8px] text-slate-600 font-bold uppercase tracking-[0.2em]">Vivo Live PWA Official System</p>
         </div>

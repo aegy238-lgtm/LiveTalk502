@@ -8,6 +8,7 @@ import { EconomyEngine } from '../../services/economy';
 import RoomBackground from './RoomBackground';
 import RoomHeader from './RoomHeader';
 import GiftAnimationLayer from './GiftAnimationLayer';
+import EntryAnimationLayer from './EntryAnimationLayer'; 
 import Seat from './Seat';
 import ComboButton from './ComboButton';
 import ControlBar from './ControlBar';
@@ -91,6 +92,8 @@ const VoiceRoom: React.FC<any> = ({
   const comboSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const comboExpireTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const emojiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const entrySentRef = useRef<boolean>(false); // ضمان إرسال الدخولية مرة واحدة لكل دخول
+  
   const pendingSyncData = useRef<{giftId: string, count: number, recipients: string[], totalCost: number, totalWin: number} | null>(null);
 
   const pendingRoomSpeakers = useRef<any[] | null>(null);
@@ -101,6 +104,22 @@ const VoiceRoom: React.FC<any> = ({
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const isHost = room.hostId === currentUser.id;
+
+  // إطلاق حدث دخول الغرفة عند الدخول لعرض الدخولية لجميع المستخدمين
+  useEffect(() => {
+     if (currentUser.activeEntry && currentUser.activeEntry !== '' && !entrySentRef.current) {
+        entrySentRef.current = true;
+        addDoc(collection(db, 'rooms', initialRoom.id, 'entry_events'), {
+           userId: currentUser.id,
+           userName: currentUser.name,
+           videoUrl: currentUser.activeEntry,
+           timestamp: serverTimestamp()
+        }).catch(err => {
+          console.error("Failed to send entry event:", err);
+          entrySentRef.current = false; // السماح بإعادة المحاولة في حال الفشل
+        });
+     }
+  }, [initialRoom.id, currentUser.id, currentUser.activeEntry]);
 
   useEffect(() => {
     const unsubRoom = onSnapshot(doc(db, 'rooms', initialRoom.id), (snap) => {
@@ -286,75 +305,6 @@ const VoiceRoom: React.FC<any> = ({
     return true;
   };
 
-  const commitPendingGiftSync = (gift: Gift) => {
-    if (!pendingSyncData.current) return;
-    const data = pendingSyncData.current;
-    pendingSyncData.current = null;
-    commitSingleGift(gift, data.count, data.recipients, data.totalCost, data.totalWin, localSpeakers);
-  };
-
-  const commitSingleGift = (gift: Gift, qty: number, recIds: string[], cost: number, win: number, speakers: any[]) => {
-    try {
-      const batch = writeBatch(db);
-      
-      recIds.forEach(rid => {
-        const valuePerRecipient = (gift.cost * qty);
-        const diamondEarnings = valuePerRecipient * 0.7;
-
-        batch.update(doc(db, 'users', rid), { 
-          charm: increment(valuePerRecipient), 
-          diamonds: increment(diamondEarnings) 
-        });
-        
-        batch.set(doc(db, 'rooms', initialRoom.id, 'contributors', currentUser.id), {
-          userId: currentUser.id, name: currentUser.name, avatar: currentUser.avatar, amount: increment(valuePerRecipient)
-        }, { merge: true });
-      });
-
-      // إضافة حدث الهدية
-      const giftEventRef = doc(collection(db, 'rooms', initialRoom.id, 'gift_events'));
-      batch.set(giftEventRef, {
-        giftId: gift.id, 
-        giftName: gift.name,
-        giftIcon: gift.icon, 
-        giftAnimation: gift.animationType || 'pop',
-        senderId: currentUser.id, 
-        senderName: currentUser.name, 
-        recipientIds: recIds, 
-        quantity: qty, 
-        duration: gift.duration || 5, 
-        displaySize: gift.displaySize || 'medium',
-        timestamp: serverTimestamp()
-      });
-
-      // إضافة إعلان عالمي (الشريط) إذا كان المبلغ كبيراً أو فوزاً بالحظ
-      if (win >= 10000 || cost >= 10000) {
-        const announcementRef = doc(collection(db, 'global_announcements'));
-        batch.set(announcementRef, {
-          senderId: currentUser.id, senderName: currentUser.name, giftName: gift.name, giftIcon: (gift.catalogIcon || gift.icon),
-          recipientName: recIds.length > 1 ? `${recIds.length} مستخدمين` : (users.find(u => u.id === recIds[0])?.name || 'مستخدم'),
-          roomTitle: initialRoom.title, roomId: initialRoom.id, amount: win >= 10000 ? win : cost,
-          type: win >= 10000 ? 'lucky_win' : 'gift', timestamp: serverTimestamp()
-        });
-      }
-
-      // تسجيل رسالة الدردشة
-      const messageRef = doc(collection(db, 'rooms', initialRoom.id, 'messages'));
-      batch.set(messageRef, {
-        userId: currentUser.id, userName: currentUser.name,
-        userWealthLevel: currentUser.wealthLevel || calcLevel(Number(currentUser.wealth || 0)),
-        userRechargeLevel: currentUser.rechargeLevel || calcLevel(Number(currentUser.rechargePoints || 0)),
-        content: win > 0 ? `أرسل ${gift.name} x${qty} وفاز بـ ${win.toLocaleString()} 🪙!` : `أرسل ${gift.name} x${qty} 🎁`,
-        type: 'gift', isLuckyWin: win > 0, timestamp: serverTimestamp()
-      });
-
-      batch.commit().catch(e => console.error("Batch commit failed", e));
-      queueRoomSpeakersUpdate(speakers);
-    } catch (e) {
-      console.error("Critical gift logic error", e);
-    }
-  };
-
   const handleSendGift = (gift: Gift, quantity: number) => {
     if (selectedRecipientIds.length === 0) return alert('اختر مستلماً أولاً');
     setShowGifts(false);
@@ -504,11 +454,78 @@ const VoiceRoom: React.FC<any> = ({
     );
   };
 
+  const commitPendingGiftSync = (gift: Gift) => {
+    if (!pendingSyncData.current) return;
+    const data = pendingSyncData.current;
+    pendingSyncData.current = null;
+    commitSingleGift(gift, data.count, data.recipients, data.totalCost, data.totalWin, localSpeakers);
+  };
+
+  const commitSingleGift = (gift: Gift, qty: number, recIds: string[], cost: number, win: number, speakers: any[]) => {
+    try {
+      const batch = writeBatch(db);
+      
+      recIds.forEach(rid => {
+        const valuePerRecipient = (gift.cost * qty);
+        const diamondEarnings = valuePerRecipient * 0.7;
+
+        batch.update(doc(db, 'users', rid), { 
+          charm: increment(valuePerRecipient), 
+          diamonds: increment(diamondEarnings) 
+        });
+        
+        batch.set(doc(db, 'rooms', initialRoom.id, 'contributors', currentUser.id), {
+          userId: currentUser.id, name: currentUser.name, avatar: currentUser.avatar, amount: increment(valuePerRecipient)
+        }, { merge: true });
+      });
+
+      const giftEventRef = doc(collection(db, 'rooms', initialRoom.id, 'gift_events'));
+      batch.set(giftEventRef, {
+        giftId: gift.id, 
+        giftName: gift.name,
+        giftIcon: gift.icon, 
+        giftAnimation: gift.animationType || 'pop',
+        senderId: currentUser.id, 
+        senderName: currentUser.name, 
+        recipientIds: recIds, 
+        quantity: qty, 
+        duration: gift.duration || 5, 
+        displaySize: gift.displaySize || 'medium',
+        timestamp: serverTimestamp()
+      });
+
+      if (win >= 10000 || cost >= 10000) {
+        const announcementRef = doc(collection(db, 'global_announcements'));
+        batch.set(announcementRef, {
+          senderId: currentUser.id, senderName: currentUser.name, giftName: gift.name, giftIcon: (gift.catalogIcon || gift.icon),
+          recipientName: recIds.length > 1 ? `${recIds.length} مستخدمين` : (users.find(u => u.id === recIds[0])?.name || 'مستخدم'),
+          roomTitle: initialRoom.title, roomId: initialRoom.id, amount: win >= 10000 ? win : cost,
+          type: win >= 10000 ? 'lucky_win' : 'gift', timestamp: serverTimestamp()
+        });
+      }
+
+      const messageRef = doc(collection(db, 'rooms', initialRoom.id, 'messages'));
+      batch.set(messageRef, {
+        userId: currentUser.id, userName: currentUser.name,
+        userWealthLevel: currentUser.wealthLevel || calcLevel(Number(currentUser.wealth || 0)),
+        userRechargeLevel: currentUser.rechargeLevel || calcLevel(Number(currentUser.rechargePoints || 0)),
+        content: win > 0 ? `أرسل ${gift.name} x${qty} وفاز بـ ${win.toLocaleString()} 🪙!` : `أرسل ${gift.name} x${qty} 🎁`,
+        type: 'gift', isLuckyWin: win > 0, timestamp: serverTimestamp()
+      });
+
+      batch.commit().catch(e => console.error("Batch commit failed", e));
+      queueRoomSpeakersUpdate(speakers);
+    } catch (e) {
+      console.error("Critical gift logic error", e);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[150] flex flex-col bg-slate-950 font-cairo overflow-hidden text-right">
       <RoomBackground background={room.background} />
       
       <GiftAnimationLayer ref={giftAnimRef} roomId={initialRoom.id} speakers={localSpeakers} currentUserId={currentUser.id} />
+      <EntryAnimationLayer roomId={initialRoom.id} currentUserId={currentUser.id} />
       
       <RoomHeader room={room} onLeave={onLeave} onMinimize={onMinimize} />
       
