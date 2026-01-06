@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Search, Settings2, X, Save, ShieldAlert, Upload, Trash2, ImageIcon, Award, Sparkles, UserMinus, Medal, Lock, Unlock, Clock, Ban, Eraser, Key, ShieldCheck, Check, Shield, UserCog, Hash } from 'lucide-react';
+import { Search, Settings2, X, Save, ShieldAlert, Upload, Trash2, ImageIcon, Award, Sparkles, UserMinus, Medal, Lock, Unlock, Clock, Ban, Eraser, Key, ShieldCheck, Check, Shield, UserCog, Hash, Smartphone, Globe } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, VIPPackage } from '../../types';
 import { db } from '../../services/firebase';
-import { doc, updateDoc, getDoc, setDoc, deleteDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, setDoc, deleteDoc, collection, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
 
 interface AdminUsersProps {
   users: User[];
@@ -34,32 +34,6 @@ const ADMIN_TABS = [
   { id: 'maintenance', label: 'الصيانة' },
 ];
 
-const compressImage = (base64: string, maxWidth: number, maxHeight: number, quality: number = 0.15): Promise<string> => {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.src = base64;
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      let width = img.width;
-      let height = img.height;
-      if (width > height) {
-        if (width > maxWidth) { height *= maxWidth / width; width = maxWidth; }
-      } else {
-        if (height > maxHeight) { width *= maxHeight / height; height = maxHeight; }
-      }
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'low';
-        ctx.drawImage(img, 0, 0, width, height);
-      }
-      resolve(canvas.toDataURL('image/webp', quality));
-    };
-  });
-};
-
 const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser, currentUser }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -70,6 +44,8 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser,
     idColor: '#fbbf24', 
     isBanned: false, 
     banUntil: '',
+    banDevice: true, // افتراضي
+    banNetwork: true, // افتراضي
     badge: '',
     cover: '',
     loginPassword: '',
@@ -98,12 +74,8 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser,
 
   const handleDeleteUser = async (user: User) => {
     if (user.id === currentUser.id) return alert('لا يمكنك حذف حسابك الخاص');
-    if (!confirm(`هل أنت متأكد من حذف حساب "${user.name}" نهائياً؟ لا يمكن التراجع عن هذا الإجراء.`)) return;
-
-    try {
-      await deleteDoc(doc(db, 'users', user.id));
-      alert('تم حذف الحساب بنجاح ✅');
-    } catch (e) { alert('فشل الحذف'); }
+    if (!confirm(`حذف حساب "${user.name}" نهائياً؟`)) return;
+    try { await deleteDoc(doc(db, 'users', user.id)); alert('تم الحذف ✅'); } catch (e) { alert('فشل الحذف'); }
   };
 
   const handleBan = (durationDays: number | 'permanent') => {
@@ -134,69 +106,50 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser,
         achievements: editingFields.achievements.slice(0, 30)
       }; 
 
-      // إذا تم تفعيل البند، نقوم بحظر الجهاز والـ IP في القائمة السوداء
       if (editingFields.isBanned) {
-        if (selectedUser.deviceId) {
+        // حظر مخصص بناءً على الاختيارات
+        if (editingFields.banDevice && selectedUser.deviceId) {
           await setDoc(doc(db, 'blacklist', 'dev_' + selectedUser.deviceId), {
-            type: 'device',
-            value: selectedUser.deviceId,
-            bannedUserId: selectedUser.id,
-            timestamp: serverTimestamp()
+            type: 'device', value: selectedUser.deviceId, bannedUserId: selectedUser.id, timestamp: serverTimestamp()
           });
         }
-        if (selectedUser.lastIp) {
+        if (editingFields.banNetwork && selectedUser.lastIp) {
           await setDoc(doc(db, 'blacklist', 'ip_' + selectedUser.lastIp.replace(/\./g, '_')), {
-            type: 'ip',
-            value: selectedUser.lastIp,
-            bannedUserId: selectedUser.id,
-            timestamp: serverTimestamp()
+            type: 'ip', value: selectedUser.lastIp, bannedUserId: selectedUser.id, timestamp: serverTimestamp()
           });
         }
+      } else {
+        // تنظيف شامل للقائمة السوداء عند فك الحظر
+        if (selectedUser.deviceId) await deleteDoc(doc(db, 'blacklist', 'dev_' + selectedUser.deviceId));
+        if (selectedUser.lastIp) await deleteDoc(doc(db, 'blacklist', 'ip_' + selectedUser.lastIp.replace(/\./g, '_')));
+        const q = query(collection(db, 'blacklist'), where('bannedUserId', '==', selectedUser.id));
+        const qSnap = await getDocs(q);
+        qSnap.forEach(async (d) => { await deleteDoc(d.ref); });
       }
 
       if (isRootAdmin) {
         updates.isSystemModerator = editingFields.isSystemModerator;
         updates.moderatorPermissions = editingFields.moderatorPermissions;
       }
-
-      if (selectedVipPackage) {
-        updates.frame = selectedVipPackage.frameUrl;
-      }
+      if (selectedVipPackage) updates.frame = selectedVipPackage.frameUrl;
 
       await onUpdateUser(selectedUser.id, updates); 
-
-      const roomRef = doc(db, 'rooms', selectedUser.id);
-      const roomSnap = await getDoc(roomRef);
-      if (roomSnap.exists()) {
-        await updateDoc(roomRef, { hostCustomId: editingFields.customId });
-      }
-
-      alert('تم حفظ التغييرات بنجاح ✅'); 
+      alert('تم تحديث البيانات ✅'); 
       setSelectedUser(null); 
-    } catch (e) { 
-      alert('فشل الحفظ: حجم البيانات كبير جداً.'); 
-    }
+    } catch (e) { alert('فشل الحفظ'); }
   };
 
   return (
     <div className="space-y-6 text-right" dir="rtl">
-      <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-        <div className="relative flex-1 w-full max-w-md">
-          <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-          <input 
-            type="text" 
-            placeholder="بحث بالاسم أو الـ ID..." 
-            value={searchQuery} 
-            onChange={(e) => setSearchQuery(e.target.value)} 
-            className="w-full bg-slate-950/50 border border-white/10 rounded-2xl py-4 pr-12 text-white text-sm outline-none shadow-lg focus:border-blue-500/50 transition-all" 
-          />
-        </div>
+      <div className="relative max-w-md">
+        <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+        <input type="text" placeholder="بحث بالاسم أو الـ ID..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-slate-950/50 border border-white/10 rounded-2xl py-4 pr-12 text-white text-sm outline-none focus:border-blue-500/50 transition-all" />
       </div>
 
       <div className="bg-slate-950/40 rounded-[2rem] border border-white/5 overflow-hidden shadow-2xl">
         <div className="overflow-x-auto">
           <table className="w-full text-right text-xs">
-            <thead className="bg-black/40 text-slate-500 font-black uppercase tracking-widest border-b border-white/5">
+            <thead className="bg-black/40 text-slate-500 font-black border-b border-white/5">
               <tr>
                 <th className="p-5">المستخدم</th>
                 <th className="p-5 text-center">الحالة</th>
@@ -215,55 +168,15 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser,
                     </div>
                   </td>
                   <td className="p-5 text-center">
-                    {u.isBanned ? (
-                       <span className="px-3 py-1 bg-red-600/20 text-red-500 rounded-lg font-black text-[9px] flex items-center justify-center gap-1 mx-auto w-fit">
-                         <Lock size={10} /> محظور
-                       </span>
-                    ) : (
-                       <span className="px-3 py-1 bg-emerald-600/20 text-emerald-500 rounded-lg font-black text-[9px] flex items-center justify-center gap-1 mx-auto w-fit">
-                         <Unlock size={10} /> نشط
-                       </span>
-                    )}
+                    {u.isBanned ? <span className="px-3 py-1 bg-red-600/20 text-red-500 rounded-lg font-black text-[9px] flex items-center justify-center gap-1 mx-auto w-fit"><Lock size={10} /> محظور</span> : <span className="px-3 py-1 bg-emerald-600/20 text-emerald-500 rounded-lg font-black text-[9px] flex items-center justify-center gap-1 mx-auto w-fit"><Unlock size={10} /> نشط</span>}
                   </td>
                   <td className="p-5 text-center">
-                    {u.isSystemModerator ? (
-                      <div className="bg-blue-500/10 text-blue-400 px-2 py-1 rounded-md text-[8px] font-black border border-blue-500/20 w-fit mx-auto flex items-center gap-1">
-                        <ShieldCheck size={10} /> مشرف نظام
-                      </div>
-                    ) : (
-                      <span className="text-slate-700">---</span>
-                    )}
+                    {u.isSystemModerator ? <div className="bg-blue-500/10 text-blue-400 px-2 py-1 rounded-md text-[8px] font-black border border-blue-500/20 w-fit mx-auto flex items-center gap-1"><ShieldCheck size={10} /> مشرف نظام</div> : <span className="text-slate-700">---</span>}
                   </td>
                   <td className="p-5 text-center">
                     <div className="flex items-center justify-center gap-2">
-                      <button 
-                        onClick={() => { 
-                          setSelectedUser(u); 
-                          setEditingFields({ 
-                            coins: u.coins || 0, 
-                            customId: u.customId?.toString() || '',
-                            vipLevel: u.vipLevel || 0, 
-                            idColor: u.idColor || '#fbbf24', 
-                            isBanned: u.isBanned || false,
-                            banUntil: u.banUntil || '',
-                            badge: u.badge || '',
-                            cover: u.cover || '',
-                            loginPassword: u.loginPassword || '',
-                            isSystemModerator: u.isSystemModerator || false,
-                            moderatorPermissions: u.moderatorPermissions || [],
-                            achievements: u.achievements || []
-                          }); 
-                        }} 
-                        className="p-2.5 bg-blue-600/10 text-blue-400 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-md"
-                      >
-                        <Settings2 size={16}/>
-                      </button>
-                      <button 
-                        onClick={() => handleDeleteUser(u)}
-                        className="p-2.5 bg-red-600/10 text-red-500 rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-md"
-                      >
-                        <Trash2 size={16}/>
-                      </button>
+                      <button onClick={() => { setSelectedUser(u); setEditingFields({ ...editingFields, coins: u.coins || 0, customId: u.customId?.toString() || '', vipLevel: u.vipLevel || 0, isBanned: u.isBanned || false, banUntil: u.banUntil || '', achievements: u.achievements || [], loginPassword: u.loginPassword || '', isSystemModerator: u.isSystemModerator || false, moderatorPermissions: u.moderatorPermissions || [], banDevice: true, banNetwork: true }); }} className="p-2.5 bg-blue-600/10 text-blue-400 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Settings2 size={16}/></button>
+                      <button onClick={() => handleDeleteUser(u)} className="p-2.5 bg-red-600/10 text-red-500 rounded-xl hover:bg-red-600 hover:text-white transition-all"><Trash2 size={16}/></button>
                     </div>
                   </td>
                 </tr>
@@ -276,9 +189,9 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser,
       <AnimatePresence>
         {selectedUser && (
           <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-lg">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-slate-900 border border-white/10 rounded-[2.5rem] w-full max-w-lg p-0 shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-slate-900 border border-white/10 rounded-[2.5rem] w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
                <div className="relative h-32 w-full bg-slate-800">
-                  {editingFields.cover && <img src={editingFields.cover} className="w-full h-full object-cover" />}
+                  {selectedUser.cover && <img src={selectedUser.cover} className="w-full h-full object-cover" />}
                   <button onClick={() => setSelectedUser(null)} className="absolute top-4 right-4 p-2 bg-black/40 text-white rounded-full"><X size={20}/></button>
                   <div className="absolute -bottom-10 right-6 flex items-end gap-4">
                      <img src={selectedUser.avatar} className="w-20 h-20 rounded-3xl border-4 border-slate-900 shadow-2xl object-cover" />
@@ -290,92 +203,36 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser,
                </div>
 
                <div className="flex-1 overflow-y-auto p-8 pt-14 space-y-8 text-right">
-                  {isRootAdmin && (
-                    <div className="space-y-6">
-                      <div className="p-6 bg-amber-500/5 rounded-[2rem] border border-amber-500/20 space-y-4">
-                         <h4 className="text-sm font-black text-amber-500 flex items-center gap-2">
-                            <Hash size={18} /> إعدادات المعرف (ID)
-                         </h4>
-                         <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-500 pr-2">رقم الآيدي الظاهر</label>
-                            <input 
-                              type="text" 
-                              value={editingFields.customId} 
-                              onChange={e => setEditingFields({...editingFields, customId: e.target.value})} 
-                              placeholder="أدخل الآيدي الجديد..." 
-                              className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white text-sm font-black outline-none focus:border-amber-500/50"
-                            />
-                         </div>
-                      </div>
-
-                      <div className="p-6 bg-blue-600/10 rounded-[2rem] border border-blue-500/30 space-y-5">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                              <ShieldCheck className="text-blue-400" size={20} />
-                              <h4 className="text-sm font-black text-white">صلاحيات مشرف النظام</h4>
-                          </div>
-                          <button 
-                            onClick={() => setEditingFields({ ...editingFields, isSystemModerator: !editingFields.isSystemModerator })}
-                            className={`w-12 h-6 rounded-full transition-all relative ${editingFields.isSystemModerator ? 'bg-blue-500' : 'bg-slate-700'}`}
-                          >
-                              <motion.div animate={{ x: editingFields.isSystemModerator ? 24 : 4 }} className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-lg" />
-                          </button>
-                        </div>
-
-                        <AnimatePresence>
-                          {editingFields.isSystemModerator && (
-                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="space-y-4 pt-2 border-t border-blue-500/20 overflow-hidden">
-                              <div className="flex items-center gap-2 mb-1">
-                                 <UserCog size={14} className="text-blue-400" />
-                                 <p className="text-[10px] text-blue-300 font-bold">تحديد بنود التحكم المسموحة للمشرف:</p>
-                              </div>
-                              <div className="grid grid-cols-2 gap-2">
-                                  {ADMIN_TABS.map(tab => (
-                                    <button 
-                                      key={tab.id}
-                                      onClick={() => togglePermission(tab.id)}
-                                      className={`p-2.5 rounded-xl text-[9px] font-black border transition-all flex items-center justify-between ${
-                                        editingFields.moderatorPermissions.includes(tab.id) 
-                                          ? 'bg-blue-600 border-blue-400 text-white shadow-lg' 
-                                          : 'bg-black/40 border-white/5 text-slate-500 hover:bg-black/60'
-                                      }`}
-                                    >
-                                      {tab.label}
-                                      {editingFields.moderatorPermissions.includes(tab.id) && <Check size={12} />}
-                                    </button>
-                                  ))}
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    </div>
-                  )}
-
                   <div className="p-6 bg-red-600/5 rounded-3xl border border-red-600/20 space-y-4">
                     <h4 className="text-sm font-black text-red-500 flex items-center gap-2">
-                       <ShieldAlert size={18} /> حظر الحساب والشبكة (IP & Device)
+                       <ShieldAlert size={18} /> خيارات الحظر المتقدمة
                     </h4>
-                    <p className="text-[10px] text-slate-500 font-bold italic px-1">تفعيل الحظر سيؤدي لإدراج جهاز المستخدم وعنوانه في القائمة السوداء تلقائياً.</p>
+                    
+                    <div className="flex gap-4 mb-4 px-1">
+                       <button 
+                         onClick={() => setEditingFields({...editingFields, banDevice: !editingFields.banDevice})}
+                         className={`flex-1 py-3 px-4 rounded-xl border flex items-center justify-center gap-2 transition-all ${editingFields.banDevice ? 'bg-red-600/20 border-red-600 text-white' : 'bg-black/40 border-white/5 text-slate-500'}`}
+                       >
+                          <Smartphone size={14} />
+                          <span className="text-[10px] font-black">بند فون (جهاز)</span>
+                          {editingFields.banDevice && <Check size={12} />}
+                       </button>
+                       <button 
+                         onClick={() => setEditingFields({...editingFields, banNetwork: !editingFields.banNetwork})}
+                         className={`flex-1 py-3 px-4 rounded-xl border flex items-center justify-center gap-2 transition-all ${editingFields.banNetwork ? 'bg-blue-600/20 border-blue-600 text-white' : 'bg-black/40 border-white/5 text-slate-500'}`}
+                       >
+                          <Globe size={14} />
+                          <span className="text-[10px] font-black">بند شبكة (IP)</span>
+                          {editingFields.banNetwork && <Check size={12} />}
+                       </button>
+                    </div>
+
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                        <button onClick={() => setEditingFields({...editingFields, isBanned: false, banUntil: ''})} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${!editingFields.isBanned ? 'bg-emerald-600 text-white border-emerald-500' : 'bg-black/20 text-slate-500 border-white/5'}`}>إلغاء</button>
                        <button onClick={() => handleBan(7)} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${editingFields.isBanned && editingFields.banUntil !== 'permanent' ? 'bg-red-600 text-white border-red-500' : 'bg-black/20 text-slate-500 border-white/5'}`}>أسبوع</button>
                        <button onClick={() => handleBan(30)} className={`py-3 rounded-xl text-[10px] font-black border transition-all bg-black/20 text-slate-500 border-white/5 hover:border-red-500/50`}>شهر</button>
                        <button onClick={() => handleBan('permanent')} className={`py-3 rounded-xl text-[10px] font-black border transition-all ${editingFields.banUntil === 'permanent' ? 'bg-red-900 text-white border-red-700' : 'bg-black/20 text-slate-500 border-white/5'}`}>نهائي</button>
                     </div>
-                  </div>
-
-                  <div className="p-6 bg-blue-600/5 rounded-3xl border border-blue-600/20 space-y-4">
-                    <h4 className="text-sm font-black text-blue-500 flex items-center gap-2">
-                       <Key size={18} /> كلمة مرور الآيدي
-                    </h4>
-                    <input 
-                      type="text" 
-                      value={editingFields.loginPassword} 
-                      onChange={e => setEditingFields({...editingFields, loginPassword: e.target.value})} 
-                      placeholder="كلمة مرور الدخول بالـ ID..." 
-                      className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white text-sm outline-none focus:border-blue-500/50"
-                    />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
@@ -385,6 +242,22 @@ const AdminUsers: React.FC<AdminUsersProps> = ({ users, vipLevels, onUpdateUser,
                         {vipLevels.sort((a,b)=>a.level-b.level).map(v => <option key={v.level} value={v.level}>{v.name}</option>)}
                      </select></div>
                   </div>
+
+                  {isRootAdmin && (
+                    <div className="p-6 bg-blue-600/10 rounded-[2rem] border border-blue-500/30 space-y-5">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-black text-white flex items-center gap-2"><ShieldCheck className="text-blue-400" size={20} /> مشرف نظام</h4>
+                        <button onClick={() => setEditingFields({ ...editingFields, isSystemModerator: !editingFields.isSystemModerator })} className={`w-12 h-6 rounded-full transition-all relative ${editingFields.isSystemModerator ? 'bg-blue-500' : 'bg-slate-700'}`}><motion.div animate={{ x: editingFields.isSystemModerator ? 24 : 4 }} className="absolute top-1 w-4 h-4 bg-white rounded-full shadow-lg" /></button>
+                      </div>
+                      {editingFields.isSystemModerator && (
+                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-blue-500/20">
+                          {ADMIN_TABS.map(tab => (
+                            <button key={tab.id} onClick={() => togglePermission(tab.id)} className={`p-2 rounded-xl text-[9px] font-black border transition-all flex items-center justify-between ${editingFields.moderatorPermissions.includes(tab.id) ? 'bg-blue-600 border-blue-400 text-white' : 'bg-black/40 border-white/5 text-slate-500'}`}>{tab.label}{editingFields.moderatorPermissions.includes(tab.id) && <Check size={10} />}</button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <button onClick={handleSave} className="w-full py-5 bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-black rounded-2xl shadow-xl active:scale-95 transition-all text-sm">تحديث بيانات العضو</button>
                </div>

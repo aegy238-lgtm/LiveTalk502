@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, User as UserIcon, LogIn, UserPlus, Smartphone, Camera, Globe, ChevronDown, Hash, ShieldCheck, Ban } from 'lucide-react';
+import { Mail, Lock, User as UserIcon, LogIn, UserPlus, Smartphone, Camera, Globe, ChevronDown, Hash, ShieldCheck, Ban, ArrowRight } from 'lucide-react';
 import { UserLevel, User as UserType } from '../types';
 import { auth, db } from '../services/firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, serverTimestamp, collection, query, where, onSnapshot, limit } from 'firebase/firestore';
 
 const ARAB_COUNTRIES = [
   "مصر", "السعودية", "الإمارات", "الكويت", "قطر", "البحرين", "عُمان", "الأردن", "فلسطين", 
   "لبنان", "سوريا", "العراق", "اليمن", "ليبيا", "السودان", "تونس", "الجزائر", "المغرب", 
   "موريتانيا", "الصومال", "جيبوتي", "جزر القمر"
 ];
+
+const ROOT_ADMIN_EMAIL = 'admin-owner@livetalk.com';
 
 interface AuthScreenProps {
   onAuth: (user: UserType) => void;
@@ -21,7 +23,6 @@ interface AuthScreenProps {
 }
 
 const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground, canInstall, onInstall }) => {
-  const [showContent, setShowContent] = useState(true); // تفعيل العرض فوراً
   const [authMode, setAuthMode] = useState<'login' | 'register' | 'id_login'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -33,7 +34,10 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
   const [defaultAvatars, setDefaultAvatars] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [isDeviceBanned, setIsDeviceBanned] = useState(false);
+  
+  const [deviceBanned, setDeviceBanned] = useState(false);
+  const [ipBanned, setIpBanned] = useState(false);
+  const [forceShowLogin, setForceShowLogin] = useState(false);
 
   const LOGO = appLogo || 'https://storage.googleapis.com/static.aistudio.google.com/stables/2025/03/06/f0e64906-e7e0-4a87-af9b-029e2467d302/f0e64906-e7e0-4a87-af9b-029e2467d302.png';
 
@@ -55,30 +59,21 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
   };
 
   useEffect(() => {
-    // تشغيل الفحص في الخلفية دون تعطيل الواجهة
-    const checkBlacklist = async () => {
-      const devId = getDeviceId();
-      const blacklistRef = collection(db, 'blacklist');
-      
-      // فحص سريع للجهاز أولاً لأنه محلي
-      const qDev = query(blacklistRef, where('value', '==', devId), limit(1));
-      const snapDev = await getDocs(qDev);
-      if (!snapDev.empty) {
-        setIsDeviceBanned(true);
-        return;
-      }
+    const devId = getDeviceId();
+    let unsubIP: (() => void) | null = null;
 
-      // فحص الـ IP في الخلفية
-      getIp().then(async (userIp) => {
-        const qIp = query(blacklistRef, where('value', '==', userIp), limit(1));
-        const snapIp = await getDocs(qIp);
-        if (!snapIp.empty) {
-          setIsDeviceBanned(true);
-        }
+    // مراقبة الجهاز فوراً وحياً
+    const unsubDevice = onSnapshot(doc(db, 'blacklist', 'dev_' + devId), (snap) => {
+      setDeviceBanned(snap.exists());
+    });
+
+    // مراقبة الـ IP فوراً وحياً
+    getIp().then(ip => {
+      const ipKey = 'ip_' + ip.replace(/\./g, '_');
+      unsubIP = onSnapshot(doc(db, 'blacklist', ipKey), (ipSnap) => {
+        setIpBanned(ipSnap.exists());
       });
-    };
-
-    checkBlacklist();
+    });
 
     const fetchDefaults = async () => {
        try {
@@ -91,21 +86,12 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
        } catch (e) {}
     };
     fetchDefaults();
-  }, []);
 
-  if (isDeviceBanned) {
-    return (
-      <div className="h-[100dvh] w-full bg-[#020617] flex flex-col items-center justify-center p-6 text-center font-cairo">
-        <div className="w-24 h-24 bg-red-600/20 rounded-full flex items-center justify-center mb-6 border-2 border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.3)]">
-          <Ban size={48} className="text-red-500" />
-        </div>
-        <h1 className="text-2xl font-black text-white mb-3">عذراً، الوصول مرفوض</h1>
-        <p className="text-slate-400 text-sm leading-relaxed max-w-xs">
-          لقد تم حظر جهازك أو شبكتك من دخول التطبيق بسبب مخالفة القوانين والشروط.
-        </p>
-      </div>
-    );
-  }
+    return () => {
+      unsubDevice();
+      if (unsubIP) unsubIP();
+    };
+  }, []);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -140,7 +126,9 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
       }
 
       if (targetUser && targetUser.loginPassword === password) {
-        if (targetUser.isBanned) {
+        const isRoot = targetUser.customId?.toString() === '1' || targetUser.email?.toLowerCase() === ROOT_ADMIN_EMAIL.toLowerCase();
+        
+        if (targetUser.isBanned && !isRoot) {
           setError('هذا الحساب محظور حالياً');
           setLoading(false);
           return;
@@ -182,7 +170,9 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
         const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
         if (userDoc.exists()) {
           const uData = userDoc.data() as UserType;
-          if (uData.isBanned) {
+          const isRoot = uData.email?.toLowerCase() === ROOT_ADMIN_EMAIL.toLowerCase() || uData.customId?.toString() === '1';
+          
+          if (uData.isBanned && !isRoot) {
             setError('هذا الحساب محظور');
             setLoading(false);
             return;
@@ -214,6 +204,9 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
     }
   };
 
+  // الحالة النهائية للحظر مع الأخذ بالاعتبار الاستثناء اليدوي للمدير
+  const isActuallyBanned = (deviceBanned || ipBanned) && !forceShowLogin;
+
   return (
     <div className="h-[100dvh] w-full bg-[#020617] flex flex-col items-center justify-center overflow-hidden font-cairo px-4 relative">
       {authBackground && (
@@ -226,12 +219,35 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
       )}
       <div className="absolute inset-0 bg-black/60 z-0"></div>
 
-      <AnimatePresence>
-        {showContent && (
+      <AnimatePresence mode="wait">
+        {isActuallyBanned ? (
+           <motion.div 
+             key="banned-screen"
+             initial={{ opacity: 0, scale: 0.9, y: 20 }}
+             animate={{ opacity: 1, scale: 1, y: 0 }}
+             exit={{ opacity: 0, scale: 0.9, y: -20 }}
+             className="w-full max-w-[360px] bg-red-950/20 backdrop-blur-3xl border border-red-500/30 rounded-[2.5rem] p-10 text-center relative z-10"
+           >
+              <div className="w-20 h-20 bg-red-600/20 rounded-full flex items-center justify-center mx-auto mb-6 border-2 border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.4)]">
+                 <Ban size={40} className="text-red-500" />
+              </div>
+              <h1 className="text-2xl font-black text-white mb-3">الوصول مرفوض</h1>
+              <p className="text-red-200/70 text-xs leading-relaxed font-bold mb-8">
+                 لقد تم حظر جهازك أو شبكتك من دخول النظام بسبب مخالفة السياسات. يرجى التواصل مع الإدارة إذا كنت تعتقد أن هذا خطأ.
+              </p>
+              
+              <button 
+                onClick={() => setForceShowLogin(true)}
+                className="flex items-center gap-2 mx-auto text-[10px] font-black text-white/40 hover:text-white transition-colors"
+              >
+                 <ArrowRight size={14} /> دخول الإدارة (تخطي حظر الشبكة)
+              </button>
+           </motion.div>
+        ) : (
           <motion.div 
+            key="login-screen"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.3 }}
             className="w-full max-w-[360px] flex flex-col items-center gap-4 relative z-10"
           >
             <div className="text-center">
@@ -323,7 +339,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
                     <div className="space-y-1">
                       <label className="text-[9px] font-black text-slate-400 pr-1">البريد الإلكتروني</label>
                       <div className="relative">
-                         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-xl py-3 px-4 text-white text-xs outline-none focus:border-amber-500/50" placeholder="example@mail.com" />
+                         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-xs outline-none focus:border-amber-500/50" placeholder="example@mail.com" />
                          <Mail size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" />
                       </div>
                     </div>
@@ -331,7 +347,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
                     <div className="space-y-1">
                       <label className="text-[9px] font-black text-slate-400 pr-1">كلمة السر</label>
                       <div className="relative">
-                         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-xl py-3 px-4 text-white text-xs outline-none focus:border-amber-500/50" placeholder="********" />
+                         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-xs outline-none focus:border-amber-500/50" placeholder="********" />
                          <Lock size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" />
                       </div>
                     </div>
