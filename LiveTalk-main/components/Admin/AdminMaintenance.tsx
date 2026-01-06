@@ -1,6 +1,5 @@
-
 import React, { useState } from 'react';
-import { Eraser, AlertTriangle, Layout, Users, ShieldAlert, RotateCcw, ShieldX, UserMinus, Zap, RefreshCw, Trash2, ShieldOff, DatabaseBackup, History, CheckCircle2, Crown, Gift, ShoppingBag } from 'lucide-react';
+import { Eraser, AlertTriangle, Layout, Users, ShieldAlert, RotateCcw, ShieldX, UserMinus, Zap, RefreshCw, Trash2, ShieldOff, DatabaseBackup, History, CheckCircle2, Crown, Gift, ShoppingBag, Trophy } from 'lucide-react';
 import { db } from '../../services/firebase';
 import { collection, getDocs, writeBatch, doc, deleteDoc, query, where } from 'firebase/firestore';
 import { DEFAULT_GIFTS, DEFAULT_STORE_ITEMS, DEFAULT_VIP_LEVELS } from '../../constants';
@@ -89,6 +88,48 @@ const AdminMaintenance: React.FC<AdminMaintenanceProps> = ({ currentUser }) => {
     }
   };
 
+  // تصفير الكاريزما الشامل (كأس الغرف + كاريزما المستخدمين)
+  const handleWipeAllCharisma = async () => {
+    const confirmMsg = '🔥 هل أنت متأكد من تصفير كافة بيانات الكاريزما والدعم في التطبيق؟ سيتم مسح ترتيب الداعمين في كل الغرف وتصفير عدادات الكاريزما لجميع المستخدمين.';
+    if (!confirm(confirmMsg)) return;
+
+    setIsProcessing(true);
+    setProcessStatus('جاري تصفير الكاريزما الشامل...');
+    try {
+      const batch = writeBatch(db);
+      
+      // 1. تصفير الكاريزما في وثائق المستخدمين
+      const usersSnap = await getDocs(collection(db, 'users'));
+      usersSnap.forEach(uDoc => {
+        batch.update(uDoc.ref, { 
+          charm: 0, 
+          hostProduction: 0 
+        });
+      });
+
+      // 2. مسح سجلات المساهمين (Contributors) من كافة الغرف
+      const roomsSnap = await getDocs(collection(db, 'rooms'));
+      for (const roomDoc of roomsSnap.docs) {
+        const contribSnap = await getDocs(collection(db, 'rooms', roomDoc.id, 'contributors'));
+        contribSnap.forEach(cDoc => {
+          batch.delete(cDoc.ref);
+        });
+        
+        // تصفير العملات المسجلة في الجلسة إن وجدت
+        batch.update(roomDoc.ref, { sessionCoins: 0 });
+      }
+
+      await batch.commit();
+      alert('✅ تم تصفير الكاريزما وترتيب الداعمين في كافة أنحاء التطبيق بنجاح!');
+    } catch (e) {
+      console.error(e);
+      alert('❌ فشلت عملية التصفير.');
+    } finally {
+      setIsProcessing(false);
+      setProcessStatus('');
+    }
+  };
+
   const handleClearChat = async () => {
     if (!confirm('سيتم حذف كافة سجلات المحادثات الخاصة لتوفير المساحة. هل أنت متأكد؟')) return;
     setIsProcessing(true);
@@ -135,13 +176,21 @@ const AdminMaintenance: React.FC<AdminMaintenanceProps> = ({ currentUser }) => {
             <p className="text-slate-400 text-sm font-bold mt-2">تحذير: هذه العمليات ستقوم بحذف كميات ضخمة من البيانات ولا يمكن التراجع عنها.</p>
           </div>
           
-          <div className="flex flex-col gap-3 w-full md:w-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full md:w-auto">
             <button 
               onClick={handleDeleteAllUsers}
               disabled={isProcessing}
               className="px-8 py-4 bg-red-600 hover:bg-red-700 text-white font-black rounded-2xl shadow-xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
             >
               <UserMinus size={20} /> حذف جميع المستخدمين
+            </button>
+
+            <button 
+              onClick={handleWipeAllCharisma}
+              disabled={isProcessing}
+              className="px-8 py-4 bg-orange-700 hover:bg-orange-800 text-white font-black rounded-2xl shadow-xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <Trophy size={20} /> تصفير كاريزما التطبيق
             </button>
             
             <button 

@@ -5,15 +5,12 @@ import { X, MessageCircle, Gift, Trophy, Star, Heart, Coins, Copy, ShieldCheck, 
 import { db } from '../services/firebase';
 import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
 
-interface UserProfileSheetProps {
-  user: User;
-  onClose: () => void;
-  isCurrentUser: boolean;
-  onAction: (action: string, payload?: any) => void;
-  currentUser: User;
-  allUsers?: User[]; 
-  currentRoom: Room; 
-}
+// دالة حساب المستوى الموحدة للبروفايل
+const calculateProfileLvl = (pts: number) => {
+  if (!pts || pts <= 0) return 1;
+  const l = Math.floor(Math.sqrt(pts / 50000)); 
+  return Math.max(1, Math.min(200, l));
+};
 
 const ProfileLevelBadge: React.FC<{ level: number; type: 'wealth' | 'recharge' }> = ({ level, type }) => {
   const isWealth = type === 'wealth';
@@ -41,23 +38,33 @@ const ProfileLevelBadge: React.FC<{ level: number; type: 'wealth' | 'recharge' }
   );
 };
 
+// Define UserProfileSheetProps interface
+interface UserProfileSheetProps {
+  user: User;
+  onClose: () => void;
+  isCurrentUser: boolean;
+  onAction: (action: string) => void;
+  currentUser: User;
+  allUsers?: User[];
+  currentRoom: Room;
+}
+
 const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, onClose, isCurrentUser, onAction, currentUser, allUsers = [], currentRoom }) => {
   const [showAdminMenu, setShowAdminMenu] = useState(false);
   
-  // استخدام useMemo للبحث عن أحدث بيانات للمستخدم من القائمة الموحدة (allUsers)
-  // هذا يضمن أن الليفل يتحدث فوراً في البروفايل عند الشحن أو إرسال الهدايا
   const user = useMemo(() => {
+    if (initialUser.id === currentUser.id) return currentUser;
     const latest = allUsers.find(u => u.id === initialUser.id);
     return latest || initialUser;
-  }, [initialUser, allUsers]);
+  }, [initialUser, allUsers, currentUser]);
 
   const isHost = currentRoom.hostId === currentUser.id;
   const isModerator = currentRoom.moderators?.includes(currentUser.id);
   const canManage = (isHost || isModerator) && !isCurrentUser;
 
-  // الاعتماد على الليفل المحسوب مسبقاً في App.tsx والموجود في كائن المستخدم
-  const wealthLvl = user.wealthLevel || 1;
-  const rechargeLvl = user.rechargeLevel || 1;
+  // حساب المستويات حياً من البيانات الخام
+  const wealthLvl = calculateProfileLvl(Number(user.wealth || 0));
+  const rechargeLvl = calculateProfileLvl(Number(user.rechargePoints || 0));
 
   return (
     <div className="fixed inset-0 z-[160] flex items-end justify-center p-0 font-cairo">
@@ -77,6 +84,7 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
         className="relative w-full max-w-md bg-[#030816] rounded-t-[3rem] border-t border-white/10 shadow-[0_-20px_60px_rgba(0,0,0,0.9)] flex flex-col overflow-hidden h-[85vh]"
         dir="rtl"
       >
+        {/* Background Cover */}
         <div className="absolute inset-0 z-0">
           {user.cover ? (
             <img src={user.cover} className="w-full h-full object-cover opacity-40" alt="background" />
@@ -86,6 +94,7 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
           <div className="absolute inset-0 bg-gradient-to-t from-[#030816] via-[#030816]/70 to-black/20"></div>
         </div>
 
+        {/* Top Header Buttons */}
         <div className="relative z-20 h-44 w-full shrink-0">
           <div className="absolute top-6 right-6 flex items-center gap-2">
              <button onClick={onClose} className="p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 transition-all">
@@ -113,19 +122,26 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
              )}
           </div>
 
+          {/* User Avatar with Prominent Frame */}
           <div className="absolute bottom-2 left-8">
-            <div className="relative w-28 h-28">
-              <div className="w-full h-full rounded-full border-4 border-[#030816] overflow-hidden bg-slate-800 shadow-2xl">
+            <div className="relative w-28 h-28 flex items-center justify-center">
+              <div className="w-[82%] h-[82%] rounded-full border-4 border-[#030816] overflow-hidden bg-slate-800 shadow-2xl relative z-10">
                 <img src={user.avatar} className="w-full h-full object-cover" alt="avatar" />
               </div>
               {user.frame && (
-                <img src={user.frame} className="absolute inset-0 scale-[1.3] pointer-events-none drop-shadow-2xl" alt="frame" />
+                <img 
+                  src={user.frame} 
+                  className="absolute inset-0 w-full h-full object-contain z-20 pointer-events-none drop-shadow-[0_0_15px_rgba(0,0,0,0.8)]" 
+                  alt="frame" 
+                />
               )}
             </div>
           </div>
         </div>
 
+        {/* Content Body */}
         <div className="relative z-20 flex-1 px-8 pt-6 pb-10 space-y-6 overflow-y-auto scrollbar-hide">
+          {/* Relationship Status */}
           {user.cpPartner && (
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }}
@@ -143,6 +159,7 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
             </motion.div>
           )}
 
+          {/* Name and Levels */}
           <div className="text-right space-y-4">
             <div className="flex items-center justify-start gap-3 flex-wrap flex-row-reverse">
                 <h2 className="text-3xl font-black text-white tracking-tight drop-shadow-lg">{user.name}</h2>
@@ -154,21 +171,23 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
             
             <button 
               onClick={() => { navigator.clipboard.writeText(user.customId || user.id); alert('تم نسخ الـ ID'); }}
-              className="relative inline-flex items-center justify-center min-h-[32px]"
+              className="relative inline-flex items-center justify-center min-h-[40px] group"
             >
               {user.badge ? (
-                <div className="relative flex items-center justify-center h-10 min-w-[110px] px-4">
-                   <img src={user.badge} className="absolute inset-0 w-full h-full object-fill z-0" alt="" />
-                   <span className="relative z-10 text-white font-black text-[12px] drop-shadow-md ml-4">ID: {user.customId || user.id}</span>
+                <div className="relative flex items-center justify-center h-12 min-w-[120px] px-6">
+                   <img src={user.badge} className="absolute inset-0 w-full h-full object-contain z-0 drop-shadow-[0_2px_8px_rgba(0,0,0,0.4)] transition-transform group-active:scale-95" alt="ID Badge" />
+                   <span className="relative z-10 text-white font-black text-[13px] drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)] ml-6 uppercase">ID: {user.customId || user.id}</span>
                 </div>
               ) : (
-                <div className="bg-[#3b82f6] text-white px-4 py-1.5 rounded-full text-xs font-black flex items-center gap-2 w-fit shadow-lg shadow-blue-900/20">
+                <div className="bg-[#3b82f6] text-white px-5 py-2 rounded-full text-xs font-black flex items-center gap-2 w-fit shadow-lg shadow-blue-900/20 active:scale-95 transition-all">
                    ID: {user.customId || user.id}
+                   <Copy size={12} className="opacity-60" />
                 </div>
               )}
             </button>
           </div>
 
+          {/* Medals / Achievements */}
           <div className="pt-2">
              <div className="flex flex-wrap gap-4 items-center">
                 {user.achievements && user.achievements.length > 0 ? (
@@ -191,6 +210,7 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
              </div>
           </div>
 
+          {/* Actions */}
           <div className="flex gap-4 pt-6">
              <button 
                onClick={() => onAction('gift')}
@@ -200,17 +220,27 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
              </button>
              
              {!isCurrentUser && (
-               <button 
-                 onClick={() => { onAction('message'); onClose(); }}
-                 className="w-16 h-16 bg-white/10 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white active:scale-90 transition-all shadow-xl"
-               >
-                 <MessageCircle size={26} />
-               </button>
+               <>
+                 <button 
+                   onClick={() => { onAction('cp'); onClose(); }}
+                   className="w-16 h-16 bg-pink-600/20 backdrop-blur-md border border-pink-500/30 rounded-full flex items-center justify-center text-pink-500 active:scale-90 transition-all shadow-xl"
+                   title="طلب ارتباط"
+                 >
+                   <Heart size={26} fill="currentColor" />
+                 </button>
+                 <button 
+                   onClick={() => { onAction('message'); onClose(); }}
+                   className="w-16 h-16 bg-white/10 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white active:scale-90 transition-all shadow-xl"
+                 >
+                   <MessageCircle size={26} />
+                 </button>
+               </>
              )}
           </div>
         </div>
       </motion.div>
 
+      {/* Admin Quick Menu */}
       <AnimatePresence>
         {showAdminMenu && (
           <motion.div 

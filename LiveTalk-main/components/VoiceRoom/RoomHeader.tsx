@@ -7,9 +7,10 @@ interface RoomHeaderProps {
   room: Room;
   onLeave: () => void;
   onMinimize: () => void;
+  isVisible?: boolean; 
 }
 
-const RoomHeader: React.FC<RoomHeaderProps> = ({ room, onLeave, onMinimize }) => {
+const RoomHeader: React.FC<RoomHeaderProps> = ({ room, onLeave, onMinimize, isVisible = true }) => {
   const [showExitDropdown, setShowExitDropdown] = useState(false);
 
   return (
@@ -21,9 +22,7 @@ const RoomHeader: React.FC<RoomHeaderProps> = ({ room, onLeave, onMinimize }) =>
         <AnimatePresence>
           {showExitDropdown && (
             <>
-              {/* Backdrop covering the whole room to handle clicks outside */}
               <div className="fixed inset-0 z-[190]" onClick={() => setShowExitDropdown(false)}></div>
-              
               <motion.div 
                 initial={{ opacity: 0, y: -10, scale: 0.95 }} 
                 animate={{ opacity: 1, y: 0, scale: 1 }} 
@@ -51,13 +50,15 @@ const RoomHeader: React.FC<RoomHeaderProps> = ({ room, onLeave, onMinimize }) =>
         </AnimatePresence>
         <div className="text-white text-right" dir="rtl">
           <h2 className="font-black text-sm truncate max-w-[120px] drop-shadow-md">{room.title}</h2>
-          {/* عرض ID حساب المضيف كـ ID للغرفة */}
           <p className="text-[10px] opacity-60 font-bold">ID: {room.hostCustomId || room.hostId}</p>
         </div>
       </div>
-      <div className="bg-black/40 backdrop-blur-md px-4 py-1.5 rounded-full flex items-center gap-2 border border-white/10 shadow-lg">
-        <UsersIcon size={12} className="text-emerald-400" />
-        <span className="text-xs font-black text-white">{room.listeners || 0}</span>
+      
+      <div className="flex items-center gap-2">
+        <div className="bg-black/40 backdrop-blur-md px-4 py-1.5 rounded-full flex items-center gap-2 border border-white/10 shadow-lg">
+          <UsersIcon size={12} className="text-emerald-400" />
+          <span className="text-xs font-black text-white">{room.listeners || 0}</span>
+        </div>
       </div>
     </div>
   );

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useImperativeHandle, forwardRef, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '../../services/firebase';
@@ -25,11 +24,9 @@ interface GiftAnimationLayerProps {
   roomId: string;
   currentUserId: string;
   speakers?: any[];
+  onActiveChange?: (active: boolean) => void; // مضاف
 }
 
-/**
- * مكون مشغل الفيديو الذكي - تم تعديله لملء الشاشة بالكامل وتشغيل الصوت
- */
 const SmartVideoPlayer = ({ src, objectFit }: { src: string, objectFit: string }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const playPromiseRef = useRef<Promise<void> | null>(null);
@@ -40,7 +37,6 @@ const SmartVideoPlayer = ({ src, objectFit }: { src: string, objectFit: string }
 
     const startVideo = async () => {
       try {
-        // نبدأ مكتومين لضمان الموافقة على الأوتوبلاي ثم نفتح الصوت
         video.muted = true;
         if (playPromiseRef.current) {
           await playPromiseRef.current;
@@ -48,11 +44,10 @@ const SmartVideoPlayer = ({ src, objectFit }: { src: string, objectFit: string }
         playPromiseRef.current = video.play();
         await playPromiseRef.current;
         
-        // محاولة فتح الصوت بعد ثانية واحدة لضمان تفاعل المستخدم مسبقاً مع الصفحة
         setTimeout(() => {
           if (video) {
             video.muted = false;
-            video.volume = 0.5; // حجم صوت معتدل
+            video.volume = 0.5;
           }
         }, 100);
       } catch (err) {
@@ -94,9 +89,16 @@ const SmartVideoPlayer = ({ src, objectFit }: { src: string, objectFit: string }
 };
 
 export const GiftAnimationLayer = forwardRef((props: GiftAnimationLayerProps, ref) => {
-  const { roomId, currentUserId } = props;
+  const { roomId, currentUserId, onActiveChange } = props;
   const [activeAnimations, setActiveAnimations] = useState<GiftEvent[]>([]);
   const playedIds = useRef(new Set<string>());
+
+  // مراقبة النشاط لإبلاغ الغرفة
+  useEffect(() => {
+    if (onActiveChange) {
+      onActiveChange(activeAnimations.length > 0);
+    }
+  }, [activeAnimations, onActiveChange]);
 
   const isVideoUrl = (url: string) => {
     if (!url) return false;
@@ -164,7 +166,7 @@ export const GiftAnimationLayer = forwardRef((props: GiftAnimationLayerProps, re
     if (!icon) return null;
     
     const isFull = displaySize === 'full' || displaySize === 'max';
-    const objectFit = isFull ? 'object-cover' : (displaySize === 'large' ? 'object-contain' : 'object-contain');
+    const objectFit = isFull ? 'object-cover' : 'object-contain';
 
     if (isVideoUrl(icon)) {
       return <SmartVideoPlayer src={icon} objectFit={objectFit} />;

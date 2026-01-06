@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../../services/firebase';
 import { doc, collection, addDoc, updateDoc, increment, serverTimestamp, writeBatch, onSnapshot, getDoc, query, orderBy, limit, where, Timestamp, setDoc, deleteDoc, arrayUnion, getDocs } from 'firebase/firestore';
@@ -29,10 +28,13 @@ import WinStrip from '../WinStrip';
 import EditProfileModal from '../EditProfileModal';
 import { AnimatePresence, motion } from 'framer-motion';
 
-/**
- * شارة ليفل الدردشة - تصميم ملكي متطابق 100% مع شارة البروفايل
- * تم توحيد الأبعاد (20px) والخطوط والتأثيرات
- */
+// دالة الحساب الفورية للمستوى
+const calculateLiveLvl = (pts: number) => {
+  if (!pts || pts <= 0) return 1;
+  const l = Math.floor(Math.sqrt(pts / 50000)); 
+  return Math.max(1, Math.min(200, l));
+};
+
 const ChatLevelBadge: React.FC<{ level: number; type: 'wealth' | 'recharge' }> = ({ level, type }) => {
   const isWealth = type === 'wealth';
   return (
@@ -62,7 +64,7 @@ const ChatLevelBadge: React.FC<{ level: number; type: 'wealth' | 'recharge' }> =
 const VoiceRoom: React.FC<any> = ({ 
   room: initialRoom, onLeave, onMinimize, currentUser, gifts, gameSettings, onUpdateRoom, 
   isMuted, onToggleMute, onUpdateUser, users, onEditProfile, onAnnouncement, onOpenPrivateChat,
-  giftCategoryLabels
+  giftCategoryLabels, isMinimized
 }) => {
   const [room, setRoom] = useState<Room>(initialRoom);
   const [showGifts, setShowGifts] = useState(false);
@@ -81,6 +83,9 @@ const VoiceRoom: React.FC<any> = ({
   const [micSkins, setMicSkins] = useState<Record<number, string>>({});
   const [selectedRecipientIds, setSelectedRecipientIds] = useState<string[]>([]);
   
+  const [isGiftActive, setIsGiftActive] = useState(false);
+  const [isEntryActive, setIsEntryActive] = useState(false);
+  
   const [sessionStartTime] = useState<number>(Date.now());
   const [localSpeakers, setLocalSpeakers] = useState<any[]>(initialRoom.speakers || []);
   const [localMicCount, setLocalMicCount] = useState<number>(Number(initialRoom.micCount || 8));
@@ -90,22 +95,26 @@ const VoiceRoom: React.FC<any> = ({
   const comboSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const comboExpireTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const emojiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const entrySentRef = useRef<boolean>(false); 
+  
+  // مرجع لتتبع إرسال الدخولية مرة واحدة فقط في هذه الجلسة
+  const hasSentEntryRef = useRef<boolean>(false); 
   
   const pendingSyncData = useRef<{giftId: string, count: number, recipients: string[], totalCost: number, totalWin: number} | null>(null);
-
   const pendingRoomSpeakers = useRef<any[] | null>(null);
   const roomSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const giftAnimRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const isHost = room.hostId === currentUser.id;
+  const isHeaderVisible = true;
 
+  // تعديل: إرسال حدث الدخول مرة واحدة فقط عند "التحميل الأول" للغرفة
   useEffect(() => {
-     if (currentUser.activeEntry && currentUser.activeEntry !== '' && !entrySentRef.current) {
-        entrySentRef.current = true;
+     // التحقق من وجود دخولية نشطة وأننا لم نقم بإرسالها مسبقاً في هذه الجلسة
+     if (!hasSentEntryRef.current && currentUser.activeEntry && currentUser.activeEntry !== '') {
+        hasSentEntryRef.current = true; // تعيين الحالة فوراً لمنع التكرار
+        
         addDoc(collection(db, 'rooms', initialRoom.id, 'entry_events'), {
            userId: currentUser.id,
            userName: currentUser.name,
@@ -113,7 +122,7 @@ const VoiceRoom: React.FC<any> = ({
            timestamp: serverTimestamp()
         }).catch(err => {
           console.error("Failed to send entry event:", err);
-          entrySentRef.current = false; 
+          hasSentEntryRef.current = false; // إعادة المحاولة في حال الفشل
         });
      }
   }, [initialRoom.id, currentUser.id, currentUser.activeEntry]);
@@ -292,9 +301,11 @@ const VoiceRoom: React.FC<any> = ({
       pendingSyncData.current.totalCost += totalCost;
       pendingSyncData.current.totalWin += winAmount;
       if (comboSyncTimerRef.current) clearTimeout(comboSyncTimerRef.current);
-      comboSyncTimerRef.current = setTimeout(() => commitPendingGiftSync(gift), 3000); 
+      comboSyncTimerRef.current = setTimeout(() => commitPendingSync(gift), 3000); 
     } else {
-      commitSingleGift(gift, quantity, recipientIds, totalCost, winAmount, updatedSpeakers);
+      setTimeout(() => {
+        commitSingleGift(gift, quantity, recipientIds, totalCost, winAmount, updatedSpeakers);
+      }, 0);
     }
 
     return true;
@@ -348,11 +359,15 @@ const VoiceRoom: React.FC<any> = ({
 
   const handleSendMessage = (text: string) => {
     if (!text.trim()) return;
-    // سحب أحدث ليفل مباشرة من currentUser المحدث لحظياً لضمان الربط التام
+    
+    // حساب المستوى الحقيقي فورياً
+    const wealthLvl = calculateLiveLvl(Number(currentUser.wealth || 0));
+    const rechargeLvl = calculateLiveLvl(Number(currentUser.rechargePoints || 0));
+    
     const msgData = {
       userId: currentUser.id, userName: currentUser.name,
-      userWealthLevel: currentUser.wealthLevel || 1,
-      userRechargeLevel: currentUser.rechargeLevel || 1,
+      userWealthLevel: wealthLvl,
+      userRechargeLevel: rechargeLvl,
       userAchievements: currentUser.achievements || [], userBubble: currentUser.activeBubble || null,
       userVip: currentUser.isVip || false, content: text, type: 'text', timestamp: serverTimestamp()
     };
@@ -450,7 +465,7 @@ const VoiceRoom: React.FC<any> = ({
     );
   };
 
-  const commitPendingGiftSync = (gift: Gift) => {
+  const commitPendingSync = (gift: Gift) => {
     if (!pendingSyncData.current) return;
     const data = pendingSyncData.current;
     pendingSyncData.current = null;
@@ -461,6 +476,11 @@ const VoiceRoom: React.FC<any> = ({
     try {
       const batch = writeBatch(db);
       
+      batch.update(doc(db, 'users', currentUser.id), {
+         coins: increment(-cost + win),
+         wealth: increment(cost)
+      });
+
       recIds.forEach(rid => {
         const valuePerRecipient = (gift.cost * qty);
         const diamondEarnings = valuePerRecipient * 0.7;
@@ -500,11 +520,15 @@ const VoiceRoom: React.FC<any> = ({
         });
       }
 
+      // حساب المستويات الحقيقية فوراً لرسالة الهدية
+      const wealthLvl = calculateLiveLvl(Number(currentUser.wealth || 0) + cost);
+      const rechargeLvl = calculateLiveLvl(Number(currentUser.rechargePoints || 0));
+
       const messageRef = doc(collection(db, 'rooms', initialRoom.id, 'messages'));
       batch.set(messageRef, {
         userId: currentUser.id, userName: currentUser.name,
-        userWealthLevel: currentUser.wealthLevel || 1,
-        userRechargeLevel: currentUser.rechargeLevel || 1,
+        userWealthLevel: wealthLvl,
+        userRechargeLevel: rechargeLvl,
         content: win > 0 ? `أرسل ${gift.name} x${qty} وفاز بـ ${win.toLocaleString()} 🪙!` : `أرسل ${gift.name} x${qty} 🎁`,
         type: 'gift', isLuckyWin: win > 0, timestamp: serverTimestamp()
       });
@@ -520,10 +544,25 @@ const VoiceRoom: React.FC<any> = ({
     <div className="fixed inset-0 z-[150] flex flex-col bg-slate-950 font-cairo overflow-hidden text-right">
       <RoomBackground background={room.background} />
       
-      <GiftAnimationLayer ref={giftAnimRef} roomId={initialRoom.id} speakers={localSpeakers} currentUserId={currentUser.id} />
-      <EntryAnimationLayer roomId={initialRoom.id} currentUserId={currentUser.id} />
+      <GiftAnimationLayer 
+        ref={giftAnimRef} 
+        roomId={initialRoom.id} 
+        speakers={localSpeakers} 
+        currentUserId={currentUser.id} 
+        onActiveChange={setIsGiftActive} 
+      />
+      <EntryAnimationLayer 
+        roomId={initialRoom.id} 
+        currentUserId={currentUser.id} 
+        onActiveChange={setIsEntryActive} 
+      />
       
-      <RoomHeader room={room} onLeave={onLeave} onMinimize={onMinimize} />
+      <RoomHeader 
+        room={room} 
+        onLeave={onLeave} 
+        onMinimize={onMinimize} 
+        isVisible={isHeaderVisible} 
+      />
       
       <AnimatePresence>
         {luckyWinAmount > 0 && <WinStrip amount={luckyWinAmount} />}
@@ -548,7 +587,6 @@ const VoiceRoom: React.FC<any> = ({
                 <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} key={msg.id} className="flex items-start gap-2">
                    <div className="flex flex-col items-start">
                       <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
-                         {/* تم استبدال الأيقونات بشارات ليفل مطابقة تماماً للبروفايل ومربوطة بالقيم اللحظية */}
                          <ChatLevelBadge level={msg.userWealthLevel || 1} type="wealth" />
                          <ChatLevelBadge level={msg.userRechargeLevel || 1} type="recharge" />
                          

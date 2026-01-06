@@ -14,44 +14,45 @@ interface EntryEvent {
 interface EntryAnimationLayerProps {
   roomId: string;
   currentUserId: string;
+  onActiveChange?: (active: boolean) => void; // مضاف
 }
 
-const EntryAnimationLayer: React.FC<EntryAnimationLayerProps> = ({ roomId, currentUserId }) => {
+const EntryAnimationLayer: React.FC<EntryAnimationLayerProps> = ({ roomId, currentUserId, onActiveChange }) => {
   const [activeEntry, setActiveEntry] = useState<EntryEvent | null>(null);
   const playedIds = useRef(new Set<string>());
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  // مراقبة النشاط لإبلاغ الغرفة
   useEffect(() => {
-    // مراقبة أحداث الدخول الجديدة في الغرفة
+    if (onActiveChange) {
+      onActiveChange(!!activeEntry);
+    }
+  }, [activeEntry, onActiveChange]);
+
+  useEffect(() => {
     const q = query(
       collection(db, 'rooms', roomId, 'entry_events'),
       orderBy('timestamp', 'desc'),
-      limit(3) // زيادة الليميت لضمان عدم ضياع الأحداث المتزامنة
+      limit(3)
     );
 
     const unsubscribe = onSnapshot(q, { includeMetadataChanges: true }, (snapshot) => {
       snapshot.docChanges().forEach((change) => {
-        // نركز فقط على الأحداث المضافة حديثاً
         if (change.type === "added") {
           const data = change.doc.data();
           const event = { id: change.doc.id, ...data } as EntryEvent;
           
-          // منع التكرار باستخدام المعرف الفريد للحدث
           if (playedIds.current.has(event.id)) return;
 
           const now = Date.now();
-          // التعامل مع serverTimestamp الذي يكون null لحظياً عند المرسل
           const eventTime = data.timestamp?.toMillis ? data.timestamp.toMillis() : now;
           
-          // إظهار الدخولية فقط إذا كانت جديدة (آخر 15 ثانية) ولم يتم عرضها مسبقاً
           if (Math.abs(now - eventTime) < 15000) {
             playedIds.current.add(event.id);
             setActiveEntry(event);
             
-            // إغلاق التأثير بعد انتهاء الفيديو (تقريباً 6 ثوانٍ)
             setTimeout(() => {
               setActiveEntry(null);
-              // تنظيف الذاكرة المؤقتة للـ IDs بعد فترة لضمان عدم تضخمها
               setTimeout(() => playedIds.current.delete(event.id), 20000);
             }, 6500);
           }
@@ -88,7 +89,6 @@ const EntryAnimationLayer: React.FC<EntryAnimationLayerProps> = ({ roomId, curre
                }}
              />
              
-             {/* شارة ترحيبية ملكية أسفل الشاشة عند منطقة أقدام الأسد كما في التصميم */}
              <motion.div 
                initial={{ y: 100, opacity: 0, scale: 0.8 }}
                animate={{ y: 0, opacity: 1, scale: 1 }}

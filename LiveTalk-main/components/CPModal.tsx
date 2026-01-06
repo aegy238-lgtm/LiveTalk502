@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Heart, Users, Search, Sparkles, Coins, Zap, UserPlus, Trash2 } from 'lucide-react';
 import { User, GameSettings, CPPartner } from '../types';
 import { db } from '../services/firebase';
-import { doc, updateDoc, increment } from 'firebase/firestore';
+import { doc, updateDoc, increment, writeBatch } from 'firebase/firestore';
 
 interface CPModalProps {
   isOpen: boolean;
@@ -18,6 +18,7 @@ const CPModal: React.FC<CPModalProps> = ({ isOpen, onClose, currentUser, users, 
   const [searchId, setSearchId] = useState('');
   const [selectedType, setSelectedType] = useState<'cp' | 'friend'>('cp');
   const [targetUser, setTargetUser] = useState<User | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   if (!isOpen) return null;
 
@@ -32,7 +33,7 @@ const CPModal: React.FC<CPModalProps> = ({ isOpen, onClose, currentUser, users, 
   };
 
   const handleEstablish = async () => {
-    if (!targetUser) return;
+    if (!targetUser || isProcessing) return;
     const isCp = selectedType === 'cp';
     const price = isCp ? (gameSettings.cpGiftPrice || 0) : (gameSettings.friendGiftPrice || 0);
     const partnerField = isCp ? 'cpPartner' : 'friendPartner';
@@ -43,12 +44,24 @@ const CPModal: React.FC<CPModalProps> = ({ isOpen, onClose, currentUser, users, 
     if (isCp && currentUser.cpPartner) return alert('لديك ارتباط CP بالفعل، قم بإنهائه أولاً');
     if (!isCp && currentUser.friendPartner) return alert('لديك علاقة صداقة بالفعل، قم بإنهائها أولاً');
 
+    setIsProcessing(true);
     try {
+       const batch = writeBatch(db);
        const partnerData: CPPartner = { id: targetUser.id, name: targetUser.name, avatar: targetUser.avatar, type: selectedType };
        const selfData: CPPartner = { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar, type: selectedType };
 
-       await updateDoc(doc(db, 'users', currentUser.id), { [partnerField]: partnerData, coins: increment(-price) });
-       await updateDoc(doc(db, 'users', targetUser.id), { [partnerField]: selfData });
+       // تحديث حساب المرسل (خصم كوينز وإضافة شريك)
+       batch.update(doc(db, 'users', currentUser.id), { 
+         [partnerField]: partnerData, 
+         coins: increment(-price) 
+       });
+       
+       // تحديث حساب الشريك (إضافة شريك فقط)
+       batch.update(doc(db, 'users', targetUser.id), { 
+         [partnerField]: selfData 
+       });
+
+       await batch.commit();
 
        onUpdateUser({ [partnerField]: partnerData, coins: currentUser.coins - price });
        alert(`مبروك! تم تفعيل ${isCp ? 'الارتباط الملكي' : 'الصداقة المقربة'} بنجاح! ✨`);
@@ -56,25 +69,39 @@ const CPModal: React.FC<CPModalProps> = ({ isOpen, onClose, currentUser, users, 
        setSearchId('');
     } catch (e) {
        alert('حدث خطأ أثناء تفعيل الارتباط');
+    } finally {
+       setIsProcessing(false);
     }
   };
 
   const handleBreakRelation = async (type: 'cp' | 'friend') => {
+    if (isProcessing) return;
     const relationName = type === 'cp' ? 'ارتباط CP' : 'علاقة الصداقة';
     const partnerField = type === 'cp' ? 'cpPartner' : 'friendPartner';
     const partner = type === 'cp' ? currentUser.cpPartner : currentUser.friendPartner;
     
     if (!partner) return;
-    if (!confirm(`هل أنت متأكد من رغبتك في إنهاء ${relationName}؟ سيتم حذفه لدى الطرفين.`)) return;
+    if (!confirm(`هل أنت متأكد من رغبتك في إنهاء ${relationName}؟ سيتم حذفه لدى الطرفين نهائياً من البروفايل.`)) return;
 
+    setIsProcessing(true);
     try {
+       const batch = writeBatch(db);
        const partnerId = partner.id;
-       await updateDoc(doc(db, 'users', currentUser.id), { [partnerField]: null });
-       await updateDoc(doc(db, 'users', partnerId), { [partnerField]: null });
+
+       // حذف العلاقة من حساب المستخدم الحالي
+       batch.update(doc(db, 'users', currentUser.id), { [partnerField]: null });
+       
+       // حذف العلاقة من حساب الطرف الآخر فوراً لضمان الاختفاء من بروفايله أيضاً
+       batch.update(doc(db, 'users', partnerId), { [partnerField]: null });
+
+       await batch.commit();
+       
        onUpdateUser({ [partnerField]: null });
-       alert(`تم إنهاء ${relationName} بنجاح.`);
+       alert(`تم إنهاء ${relationName} وحذفه من البروفايلات بنجاح.`);
     } catch (e) {
        alert('حدث خطأ أثناء محاولة إنهاء العلاقة');
+    } finally {
+       setIsProcessing(false);
     }
   };
 
@@ -151,7 +178,7 @@ const CPModal: React.FC<CPModalProps> = ({ isOpen, onClose, currentUser, users, 
               </div>
 
               {targetUser && (
-                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-4">
+                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, scale: 1 }} className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-4">
                     <div className="flex items-center gap-3">
                        <img src={targetUser.avatar} className="w-12 h-12 rounded-xl object-cover" />
                        <div className="flex-1 text-right">
@@ -166,7 +193,13 @@ const CPModal: React.FC<CPModalProps> = ({ isOpen, onClose, currentUser, users, 
                              {selectedType === 'cp' ? (gameSettings.cpGiftPrice || 0) : (gameSettings.friendGiftPrice || 0)} <Coins size={12} />
                           </div>
                        </div>
-                       <button onClick={handleEstablish} className={`px-6 py-2 ${selectedType === 'cp' ? 'bg-pink-600' : 'bg-blue-600'} text-white font-black text-[10px] rounded-xl shadow-lg active:scale-95 transition-all`}>تفعيل الآن</button>
+                       <button 
+                         onClick={handleEstablish} 
+                         disabled={isProcessing}
+                         className={`px-6 py-2 ${selectedType === 'cp' ? 'bg-pink-600' : 'bg-blue-600'} text-white font-black text-[10px] rounded-xl shadow-lg active:scale-95 transition-all disabled:opacity-50`}
+                       >
+                          {isProcessing ? 'جاري...' : 'تفعيل الآن'}
+                       </button>
                     </div>
                  </motion.div>
               )}

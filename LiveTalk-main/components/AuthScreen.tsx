@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, User as UserIcon, LogIn, UserPlus, Smartphone, Camera, Globe, ChevronDown, Hash, ShieldCheck } from 'lucide-react';
+import { Mail, Lock, User as UserIcon, LogIn, UserPlus, Smartphone, Camera, Globe, ChevronDown, Hash, ShieldCheck, Ban } from 'lucide-react';
 import { UserLevel, User as UserType } from '../types';
 import { auth, db } from '../services/firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
@@ -22,7 +21,7 @@ interface AuthScreenProps {
 }
 
 const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground, canInstall, onInstall }) => {
-  const [showContent, setShowContent] = useState(false);
+  const [showContent, setShowContent] = useState(true); // تفعيل العرض فوراً
   const [authMode, setAuthMode] = useState<'login' | 'register' | 'id_login'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,11 +33,53 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
   const [defaultAvatars, setDefaultAvatars] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isDeviceBanned, setIsDeviceBanned] = useState(false);
 
   const LOGO = appLogo || 'https://storage.googleapis.com/static.aistudio.google.com/stables/2025/03/06/f0e64906-e7e0-4a87-af9b-029e2467d302/f0e64906-e7e0-4a87-af9b-029e2467d302.png';
 
+  const getDeviceId = () => {
+    let id = localStorage.getItem('livetalk_device_fingerprint');
+    if (!id) {
+      id = 'dev_' + Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+      localStorage.setItem('livetalk_device_fingerprint', id);
+    }
+    return id;
+  };
+
+  const getIp = async () => {
+    try {
+      const res = await fetch('https://api.ipify.org?format=json');
+      const data = await res.json();
+      return data.ip;
+    } catch (e) { return '0.0.0.0'; }
+  };
+
   useEffect(() => {
-    setShowContent(true);
+    // تشغيل الفحص في الخلفية دون تعطيل الواجهة
+    const checkBlacklist = async () => {
+      const devId = getDeviceId();
+      const blacklistRef = collection(db, 'blacklist');
+      
+      // فحص سريع للجهاز أولاً لأنه محلي
+      const qDev = query(blacklistRef, where('value', '==', devId), limit(1));
+      const snapDev = await getDocs(qDev);
+      if (!snapDev.empty) {
+        setIsDeviceBanned(true);
+        return;
+      }
+
+      // فحص الـ IP في الخلفية
+      getIp().then(async (userIp) => {
+        const qIp = query(blacklistRef, where('value', '==', userIp), limit(1));
+        const snapIp = await getDocs(qIp);
+        if (!snapIp.empty) {
+          setIsDeviceBanned(true);
+        }
+      });
+    };
+
+    checkBlacklist();
+
     const fetchDefaults = async () => {
        try {
          const snap = await getDoc(doc(db, 'appSettings', 'defaults'));
@@ -51,6 +92,20 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
     };
     fetchDefaults();
   }, []);
+
+  if (isDeviceBanned) {
+    return (
+      <div className="h-[100dvh] w-full bg-[#020617] flex flex-col items-center justify-center p-6 text-center font-cairo">
+        <div className="w-24 h-24 bg-red-600/20 rounded-full flex items-center justify-center mb-6 border-2 border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.3)]">
+          <Ban size={48} className="text-red-500" />
+        </div>
+        <h1 className="text-2xl font-black text-white mb-3">عذراً، الوصول مرفوض</h1>
+        <p className="text-slate-400 text-sm leading-relaxed max-w-xs">
+          لقد تم حظر جهازك أو شبكتك من دخول التطبيق بسبب مخالفة القوانين والشروط.
+        </p>
+      </div>
+    );
+  }
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -71,7 +126,6 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
 
     try {
       const usersRef = collection(db, 'users');
-      // Search for user with matching customId or original firebase ID
       const q = query(usersRef, where('customId', '==', userId), limit(1));
       const querySnapshot = await getDocs(q);
       
@@ -79,7 +133,6 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
       if (!querySnapshot.empty) {
         targetUser = { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() } as UserType;
       } else {
-        // Try original ID if not found by customId
         const docSnap = await getDoc(doc(db, 'users', userId));
         if (docSnap.exists()) {
           targetUser = { id: docSnap.id, ...docSnap.data() } as UserType;
@@ -87,9 +140,17 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
       }
 
       if (targetUser && targetUser.loginPassword === password) {
-        onAuth(targetUser);
+        if (targetUser.isBanned) {
+          setError('هذا الحساب محظور حالياً');
+          setLoading(false);
+          return;
+        }
+        const devId = getDeviceId();
+        const userIp = await getIp();
+        await setDoc(doc(db, 'users', targetUser.id), { deviceId: devId, lastIp: userIp }, { merge: true });
+        onAuth({ ...targetUser, deviceId: devId, lastIp: userIp });
       } else {
-        setError('بيانات الدخول غير صحيحة أو لم يتم ربط هذا الحساب بكلمة مرور بعد');
+        setError('بيانات الدخول غير صحيحة');
       }
     } catch (err) {
       setError('حدث خطأ أثناء محاولة الدخول');
@@ -112,11 +173,23 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
     setLoading(true);
     setError('');
 
+    const devId = getDeviceId();
+    const userIp = await getIp();
+
     try {
       if (authMode === 'login') {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
-        if (userDoc.exists()) onAuth(userDoc.data() as UserType);
+        if (userDoc.exists()) {
+          const uData = userDoc.data() as UserType;
+          if (uData.isBanned) {
+            setError('هذا الحساب محظور');
+            setLoading(false);
+            return;
+          }
+          await setDoc(doc(db, 'users', uData.id), { deviceId: devId, lastIp: userIp }, { merge: true });
+          onAuth({ ...uData, deviceId: devId, lastIp: userIp });
+        }
       } else {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const userData: UserType = {
@@ -126,8 +199,10 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
           avatar,
           gender,
           location,
-          level: UserLevel.NEW, coins: 5000, diamonds: 0, wealth: 0, charm: 0, isVip: false,
-          stats: { likes: 0, visitors: 0, following: 0, followers: 0 }, ownedItems: []
+          level: UserLevel.NEW, coins: 0, diamonds: 0, wealth: 0, charm: 0, isVip: false,
+          stats: { likes: 0, visitors: 0, following: 0, followers: 0 }, ownedItems: [],
+          deviceId: devId,
+          lastIp: userIp
         };
         await setDoc(doc(db, 'users', userCredential.user.uid), { ...userData, email, createdAt: serverTimestamp() });
         onAuth(userData);
@@ -154,15 +229,13 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
       <AnimatePresence>
         {showContent && (
           <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
             className="w-full max-w-[360px] flex flex-col items-center gap-4 relative z-10"
           >
             <div className="text-center">
               <motion.div 
-                initial={{ scale: 0.8 }}
-                animate={{ scale: 1 }}
                 className="w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-600 rounded-2xl mx-auto mb-1 p-0.5 shadow-xl"
               >
                 <img src={LOGO} className="w-full h-full object-cover rounded-[0.9rem]" />
@@ -207,7 +280,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
 
                     <div className="space-y-1">
                       <label className="text-[9px] font-black text-slate-400 pr-1">الاسم المستعار</label>
-                      <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-xl py-3 px-4 text-white text-xs outline-none focus:border-amber-500/50" placeholder="اسمك الظاهر للأصدقاء..." />
+                      <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-xl py-3 px-4 text-white text-xs outline-none focus:border-amber-500/50" placeholder="اسمك الظاهر..." />
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
@@ -220,12 +293,9 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
                        </div>
                        <div className="space-y-1">
                           <label className="text-[9px] font-black text-slate-400 pr-1">الدولة</label>
-                          <div className="relative">
-                            <select value={location} onChange={(e) => setLocation(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-xl py-3 px-3 text-white text-xs outline-none appearance-none cursor-pointer">
-                               {ARAB_COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                            <ChevronDown size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-                          </div>
+                          <select value={location} onChange={(e) => setLocation(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-xl py-3 px-3 text-white text-xs outline-none cursor-pointer">
+                             {ARAB_COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
                        </div>
                     </div>
                   </>
@@ -274,12 +344,6 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuth, appLogo, authBackground
                   {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : (authMode === 'login' ? <><LogIn size={18}/> دخول</> : authMode === 'id_login' ? <><ShieldCheck size={18}/> دخول بالـ ID</> : <><UserPlus size={18}/> إنشاء الحساب</>)}
                 </button>
               </form>
-
-              {canInstall && (
-                <button onClick={onInstall} className="w-full mt-6 bg-blue-600/10 border border-blue-500/20 py-3 rounded-2xl text-blue-400 font-black text-[10px] flex items-center justify-center gap-2 active:scale-95">
-                  <Smartphone size={16} /> تنزيل التطبيق الرسمي
-                </button>
-              )}
             </div>
           </motion.div>
         )}

@@ -101,6 +101,8 @@ export interface User {
   hostProduction?: number; 
   isBanned?: boolean;
   banUntil?: string;
+  deviceId?: string; // بصمة الجهاز
+  lastIp?: string;   // آخر IP
   seatIndex?: number;
   status?: string;
   activeEmoji?: string; 
@@ -117,6 +119,15 @@ export interface User {
     isLocked: boolean;
     password?: string;
   };
+}
+
+export interface BlacklistEntry {
+  id: string;
+  type: 'device' | 'ip';
+  value: string;
+  reason?: string;
+  bannedUserId: string;
+  timestamp: any;
 }
 
 export interface LuckyBag {

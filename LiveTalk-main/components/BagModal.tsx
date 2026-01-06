@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-// Added Video to imports to fix "Cannot find name 'Video'" error
 import { X, ShoppingBag, Check, MessageSquare, Image as ImageIcon, Coins, Sparkles, Wand2, Trash2, LogIn, Video } from 'lucide-react';
 import { StoreItem, User, ItemType } from '../types';
 
@@ -29,19 +28,26 @@ const BagModal: React.FC<BagModalProps> = ({ isOpen, onClose, items, user, onBuy
 
   const handleInstantBuy = (item: StoreItem) => {
     const userCoins = Number(user.coins || 0);
-    if (userCoins < item.price) {
-      alert('عذراً، رصيدك لا يكفي لشراء هذا المنتج 🪙');
+    const itemPrice = Number(item.price || 0);
+
+    // فحص أمني إضافي في الواجهة
+    if (userCoins < itemPrice) {
+      alert('❌ عذراً، رصيدك غير كافٍ لشراء هذا المنتج');
       return;
     }
+
     setActionEffect(item.id);
-    setTimeout(() => setActionEffect(null), 1500);
     onBuy(item);
+    
+    setTimeout(() => {
+      setActionEffect(null);
+    }, 1500);
   };
 
   const handleInstantEquip = (item: StoreItem) => {
     setActionEffect(item.id);
-    setTimeout(() => setActionEffect(null), 1500);
     onEquip(item);
+    setTimeout(() => setActionEffect(null), 1500);
   };
 
   const handleUnequip = (type: 'frame' | 'bubble' | 'entry') => {
@@ -103,13 +109,15 @@ const BagModal: React.FC<BagModalProps> = ({ isOpen, onClose, items, user, onBuy
            <div className="grid grid-cols-2 gap-3.5 pb-20">
              {filteredItems.map((item) => {
                const isOwned = Array.isArray(user.ownedItems) && user.ownedItems.includes(item.id);
+               const itemPrice = Number(item.price || 0);
+               const userCoins = Number(user.coins || 0);
                
                let isEquipped = false;
                if (item.type === 'frame') isEquipped = user.frame === item.url && item.url !== '';
                if (item.type === 'bubble') isEquipped = user.activeBubble === item.url && item.url !== '';
                if (item.type === 'entry') isEquipped = user.activeEntry === item.url && item.url !== '';
 
-               const canAfford = Number(user.coins || 0) >= item.price;
+               const canAfford = userCoins >= itemPrice;
                const isActivating = actionEffect === item.id;
 
                return (
@@ -120,7 +128,7 @@ const BagModal: React.FC<BagModalProps> = ({ isOpen, onClose, items, user, onBuy
                        ? 'bg-blue-600/10 border-blue-500/60 ring-1 ring-blue-500/20' 
                        : isOwned 
                           ? 'bg-slate-800/80 border-white/10' 
-                          : 'bg-slate-900/40 border-white/5 opacity-90'
+                          : 'bg-slate-900/40 border-white/5'
                    }`}
                  >
                    {/* Item Preview */}
@@ -184,12 +192,12 @@ const BagModal: React.FC<BagModalProps> = ({ isOpen, onClose, items, user, onBuy
                             className={`w-full py-2.5 rounded-xl text-[10px] font-black transition-all active:scale-90 flex flex-col items-center justify-center gap-0.5 border ${
                                canAfford 
                                  ? 'bg-gradient-to-r from-amber-400 to-orange-600 text-black border-amber-300 shadow-lg shadow-amber-900/30' 
-                                 : 'bg-slate-800 text-slate-500 border-white/5 opacity-50'
+                                 : 'bg-slate-800 text-slate-500 border-white/5 opacity-50 cursor-not-allowed'
                             }`}
                          >
-                            <span className="uppercase tracking-tighter opacity-80">شراء فوراً</span>
+                            <span className="uppercase tracking-tighter opacity-80">{canAfford ? 'شراء فوراً' : 'رصيد غير كافٍ'}</span>
                             <div className="flex items-center gap-1 text-[12px] font-black">
-                               <span>{item.price.toLocaleString()}</span>
+                               <span>{itemPrice.toLocaleString()}</span>
                                <Coins size={11} fill="currentColor" />
                             </div>
                          </button>

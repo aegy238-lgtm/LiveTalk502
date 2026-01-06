@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { Room } from '../types';
 import { Users, BarChart2, Sparkles, Lock } from 'lucide-react';
@@ -12,7 +11,6 @@ const RoomCard: React.FC<RoomCardProps> = ({ room, onClick }) => {
   const host = room.speakers?.[0];
   
   const idDisplay = useMemo(() => {
-     // الأولوية القصوى للمعرف الرقمي المحفوظ في الغرفة أو في المتحدث الأول
      const displayId = room.hostCustomId || host?.customId || '---';
      const badge = (host as any)?.badge;
      const isSpecial = (host as any)?.isSpecialId;
@@ -20,12 +18,13 @@ const RoomCard: React.FC<RoomCardProps> = ({ room, onClick }) => {
      return (
         <div className="relative inline-flex items-center justify-center">
            {badge ? (
-             <div className="relative flex items-center justify-center h-6 min-w-[75px] px-3">
+             <div className="relative flex items-center justify-center h-7 min-w-[85px] px-4 group">
                <img 
                  src={badge} 
-                 className="absolute inset-0 w-full h-full object-fill pointer-events-none z-0" 
+                 className="absolute inset-0 w-full h-full object-contain pointer-events-none z-0 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" 
+                 alt="ID Badge"
                />
-               <span className="relative z-10 text-white font-black text-[8px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] whitespace-nowrap tracking-tight">
+               <span className="relative z-10 text-white font-black text-[9px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] whitespace-nowrap tracking-tight pl-3">
                   ID: {displayId}
                </span>
              </div>
