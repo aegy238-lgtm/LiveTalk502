@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Gamepad2, Play, Trophy, Sparkles, Star } from 'lucide-react';
@@ -45,7 +44,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ onOpenGame }) => {
                 <div className="space-y-2 z-10">
                    <div className="bg-yellow-400 text-black px-3 py-1 rounded-full text-[10px] font-black w-fit shadow-lg mb-2 flex items-center gap-1"><Sparkles size={10}/> مضاعفة حتى x45</div>
                    <h4 className="text-2xl font-black text-white">عجلة الأسد الملك</h4>
-                   <p className="text-xs text-sky-100 font-bold max-w-[160px]">اللعبة الملكية الأكثر شهرة، 10 ثوانٍ تفصلك عن الربح الكبير!</p>
+                   <p className="text-xs text-sky-100 font-bold max-w-[160px]">اللعبة الملكية الأكثر شهرة، 15 ثانية تفصلك عن الربح الكبير!</p>
                    <div className="pt-4 flex items-center gap-2 text-yellow-400 font-black text-xs">
                       <div className="w-8 h-8 bg-yellow-400/20 rounded-full flex items-center justify-center border border-yellow-400/30">
                          <Play size={14} fill="currentColor" />
@@ -78,7 +77,7 @@ const ActivitiesTab: React.FC<ActivitiesTabProps> = ({ onOpenGame }) => {
                 <div className="relative h-full p-5 flex flex-col justify-center">
                     <span className="text-4xl mb-3">🎡</span>
                     <h4 className="text-lg font-black text-white">عجلة الحظ</h4>
-                    <p className="text-[10px] text-slate-400">مضاعفة حتى x8</p>
+                    <p className="text-[10px] text-slate-400">مضاعفة حتى x8 خلال 15 ثانية</p>
                 </div>
               </motion.button>
 

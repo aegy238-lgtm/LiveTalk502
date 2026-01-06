@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Trophy, Volume2, VolumeX, History, Coins } from 'lucide-react';
@@ -82,20 +81,12 @@ const FruitGameModal: React.FC<FruitGameModalProps> = ({ isOpen, onClose, userCo
 
   const spinWheel = () => {
     // 1. Decide Winner Logic (Weighted Random)
-    // Simply picking random for now based on probability logic simulated by array distribution
     const randomIndex = Math.floor(Math.random() * WHEEL_ITEMS.length);
     const winningItem = WHEEL_ITEMS[randomIndex];
     setWinner(winningItem);
 
     // 2. Calculate Rotation
-    // Wheel has 8 items (WHEEL_ITEMS length). Each segment is 360/8 = 45 degrees.
-    // To land on index i, we need to rotate to: - (i * 45) degrees + some spins.
-    // Adding extra random offset inside the segment to make it look realistic (optional)
     const segmentAngle = 360 / WHEEL_ITEMS.length;
-    // Align center of segment: (index * 45) + 22.5
-    // Actually, CSS rotation rotates clockwise. 
-    // To land on item at index `i`, we rotate `360 - (i * segmentAngle)`.
-    // Add 5 full rotations (5 * 360 = 1800).
     const targetRotation = rotation + 1800 + (360 - (randomIndex * segmentAngle));
     
     setRotation(targetRotation);
@@ -104,20 +95,10 @@ const FruitGameModal: React.FC<FruitGameModalProps> = ({ isOpen, onClose, userCo
     setTimeout(() => {
        setHistory(prev => [winningItem, ...prev.slice(0, 7)]);
        
-       // Calculate Payout
-       let totalPayout = 0;
-       
-       // Bets keys are 'watermelon', 'grape', '777'
-       // winningItem.id matches these keys
        if (bets[winningItem.id]) {
           const winAmount = bets[winningItem.id] * winningItem.multiplier;
-          totalPayout += winAmount;
-          // Return original bet + profit? 
-          // Usually Wheel games: You bet 100 on x2. You win 200. Net +100.
-          // Since we deducted coins on bet, we just add the winnings.
           onUpdateCoins(userCoins + winAmount + bets[winningItem.id]); 
        }
-       
     }, 7000);
   };
 
@@ -134,9 +115,6 @@ const FruitGameModal: React.FC<FruitGameModalProps> = ({ isOpen, onClose, userCo
 
   if (!isOpen) return null;
 
-  // Group unique betting options (Watermelon, 777, Grape, Apple)
-  // We want specific buttons as per image: Watermelon (x2), 777 (x8), Grape (x2).
-  // We'll filter unique IDs from WHEEL_ITEMS.
   const uniqueBetItems = Array.from(new Set(WHEEL_ITEMS.map(i => i.id)))
     .map(id => WHEEL_ITEMS.find(i => i.id === id)!);
 
@@ -176,7 +154,7 @@ const FruitGameModal: React.FC<FruitGameModalProps> = ({ isOpen, onClose, userCo
             <div className="bg-gradient-to-r from-transparent via-black/60 to-transparent w-full text-center py-1">
                {status === GameStatus.BETTING ? (
                   <div className="text-yellow-400 font-black text-xl tracking-widest animate-pulse">
-                     ضع رهانك {timeLeft}s
+                     ضع رهانك: {timeLeft} ثانية
                   </div>
                ) : status === GameStatus.SPINNING ? (
                   <div className="text-green-400 font-black text-xl tracking-widest">
@@ -192,15 +170,10 @@ const FruitGameModal: React.FC<FruitGameModalProps> = ({ isOpen, onClose, userCo
 
          {/* The Wheel Container */}
          <div className="relative w-72 h-72 mx-auto mt-2 mb-6">
-            {/* Pointer */}
             <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-2 z-30 w-8 h-10 filter drop-shadow-lg">
                <div className="w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[20px] border-t-yellow-400"></div>
             </div>
-
-            {/* Wheel Board Background (Decor) */}
             <div className="absolute inset-[-10px] rounded-full border-[8px] border-amber-600 shadow-2xl bg-[#2e1065]"></div>
-
-            {/* Rotating Wheel */}
             <motion.div 
                className="w-full h-full rounded-full relative overflow-hidden border-[4px] border-yellow-500 shadow-inner"
                style={{ 
@@ -213,11 +186,8 @@ const FruitGameModal: React.FC<FruitGameModalProps> = ({ isOpen, onClose, userCo
                   )`
                }}
                animate={{ rotate: rotation }}
-               // Fixed: Type '"cubicBezier(0.25, 1, 0.5, 1)"' is not assignable to type 'Easing | Easing[]'.
-               // Corrected to use cubic bezier numeric array.
-               transition={{ duration: 7, ease: [0.25, 1, 0.5, 1] }} // 7 Seconds spin
+               transition={{ duration: 7, ease: [0.25, 1, 0.5, 1] }} 
             >
-               {/* Slices Content (Icons) */}
                {WHEEL_ITEMS.map((item, i) => {
                   const angle = (360 / WHEEL_ITEMS.length) * i + (360 / WHEEL_ITEMS.length) / 2;
                   return (
@@ -229,7 +199,6 @@ const FruitGameModal: React.FC<FruitGameModalProps> = ({ isOpen, onClose, userCo
                         <span className="text-2xl transform -rotate-90" style={{ transform: `rotate(${-angle}deg)` }}>
                            {item.icon}
                         </span>
-                        {/* Multiplier Text */}
                         <span 
                            className="absolute top-12 text-[10px] font-black text-white drop-shadow-md" 
                            style={{ transform: `rotate(${-angle}deg)` }}
@@ -239,19 +208,14 @@ const FruitGameModal: React.FC<FruitGameModalProps> = ({ isOpen, onClose, userCo
                      </div>
                   );
                })}
-               
-               {/* Center Knob */}
                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-gradient-to-br from-amber-600 to-amber-800 rounded-full border-4 border-yellow-400 shadow-xl flex items-center justify-center z-10">
                   <div className="w-8 h-8 rounded-full bg-black/30 backdrop-blur-sm"></div>
                </div>
             </motion.div>
          </div>
 
-         {/* Betting Area (Main Content) */}
          <div className="flex-1 bg-gradient-to-t from-black/80 to-transparent p-4 flex flex-col justify-end">
-             {/* Betting Buttons (3 Main Options mimicking image style: Watermelon, 777, Grape) */}
              <div className="flex justify-center gap-3 mb-4">
-                 {/* Only showing unique betting targets to simplify UI like image */}
                  {uniqueBetItems.map((item) => (
                     <button
                        key={item.id}
@@ -261,20 +225,16 @@ const FruitGameModal: React.FC<FruitGameModalProps> = ({ isOpen, onClose, userCo
                           status === GameStatus.BETTING ? 'hover:brightness-110 cursor-pointer' : 'opacity-80 cursor-not-allowed'
                        }`}
                        style={{ 
-                          backgroundColor: `${item.color}30`, // 30% opacity hex
+                          backgroundColor: `${item.color}30`, 
                           borderColor: item.color,
                           boxShadow: `0 4px 0 ${item.color}80`
                        }}
                     >
-                       {/* Background Flash on Win */}
                        {status === GameStatus.RESULT && winner?.id === item.id && (
                           <div className="absolute inset-0 bg-white/20 animate-ping"></div>
                        )}
-
                        <div className="text-3xl filter drop-shadow-lg group-hover:scale-110 transition-transform">{item.icon}</div>
                        <div className="bg-black/40 px-2 rounded text-xs text-white font-bold">x{item.multiplier}</div>
-                       
-                       {/* Current Bet Badge */}
                        {bets[item.id] > 0 && (
                           <div className="absolute top-1 right-1 bg-yellow-400 text-black text-[10px] font-bold px-1.5 rounded-full shadow-md animate-bounce">
                              {bets[item.id] >= 1000 ? (bets[item.id]/1000).toFixed(0) + 'k' : bets[item.id]}
@@ -284,7 +244,6 @@ const FruitGameModal: React.FC<FruitGameModalProps> = ({ isOpen, onClose, userCo
                  ))}
              </div>
 
-             {/* User Balance & Chip Selector */}
              <div className="flex items-center justify-between gap-4">
                  <div className="flex flex-col">
                     <span className="text-[10px] text-slate-400">الرصيد</span>
@@ -293,8 +252,6 @@ const FruitGameModal: React.FC<FruitGameModalProps> = ({ isOpen, onClose, userCo
                        <Coins size={12} className="text-yellow-500" />
                     </div>
                  </div>
-
-                 {/* Chips */}
                  <div className="flex gap-2">
                     {CHIPS.map(chip => (
                        <button

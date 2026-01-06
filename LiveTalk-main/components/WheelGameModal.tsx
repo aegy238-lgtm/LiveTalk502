@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Trophy, History, Coins, Volume2, VolumeX } from 'lucide-react';
@@ -151,7 +150,7 @@ const WheelGameModal: React.FC<WheelGameModalProps> = ({ isOpen, onClose, userCo
          <div className="flex justify-center mt-3 relative z-20">
             <div className="bg-black/60 px-6 py-1.5 rounded-full border border-white/5">
                {status === GameStatus.BETTING ? (
-                 <span className="text-yellow-400 font-black text-sm animate-pulse tracking-widest uppercase">وقت الرهان: {timeLeft}s</span>
+                 <span className="text-yellow-400 font-black text-sm animate-pulse tracking-widest uppercase">وقت الرهان: {timeLeft} ثانية</span>
                ) : status === GameStatus.SPINNING ? (
                  <span className="text-green-400 font-black text-sm uppercase">جاري السحب...</span>
                ) : (

@@ -1,8 +1,7 @@
-
 import React, { useMemo, useEffect, useState } from 'react';
 import { User, Room } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, MessageCircle, Gift, Medal, Award, Trophy, Star, MoreVertical, ShieldCheck, MicOff, UserX, ShieldAlert, RotateCcw, Heart, Users, Copy, Key, Mail, Lock, Coins } from 'lucide-react';
+import { X, MessageCircle, Gift, Trophy, Star, Heart, Coins, Copy, ShieldCheck, MoreVertical, MicOff, UserX, RotateCcw, Users, Edit3 } from 'lucide-react';
 import { db } from '../services/firebase';
 import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, increment } from 'firebase/firestore';
 
@@ -14,7 +13,6 @@ interface UserProfileSheetProps {
   currentUser: User;
   allUsers?: User[]; 
   currentRoom: Room; 
-  onShowRoomRank?: () => void;
 }
 
 const calculateLevel = (points: number) => {
@@ -23,38 +21,34 @@ const calculateLevel = (points: number) => {
   return Math.max(1, Math.min(100, lvl));
 };
 
-const LevelBadge: React.FC<{ level: number; type: 'wealth' | 'recharge' }> = ({ level, type }) => {
+const ProfileLevelBadge: React.FC<{ level: number; type: 'wealth' | 'recharge' }> = ({ level, type }) => {
   const isWealth = type === 'wealth';
   return (
-    <div className="relative h-7 min-w-[85px] flex items-center group cursor-default">
-      <div className={`absolute inset-0 rounded-l-md rounded-r-2xl border-y border-r shadow-lg transition-all duration-300 ${
+    <div className="relative h-[20px] min-w-[65px] flex items-center pr-3 group cursor-default shrink-0">
+      <div className={`absolute inset-0 right-3 rounded-l-md border border-amber-500/60 shadow-lg ${
         isWealth 
-          ? 'bg-gradient-to-r from-[#6a29e3] via-[#8b5cf6] to-[#6a29e3] border-[#a78bfa]/30 shadow-[#6a29e3]/20' 
-          : 'bg-gradient-to-r from-[#1a1a1a] via-[#333] to-[#1a1a1a] border-amber-500/30 shadow-black/40'
+          ? 'bg-gradient-to-r from-[#6a29e3] to-[#8b5cf6]' 
+          : 'bg-[#121212]'
       }`}>
-        <div className="absolute inset-0 opacity-40 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
+        <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')]"></div>
       </div>
-      <div className={`relative z-10 -ml-1 h-9 w-9 flex items-center justify-center shrink-0 drop-shadow-[0_2px_5px_rgba(0,0,0,0.5)]`}>
-        <div className={`absolute inset-0 rounded-lg transform rotate-45 border-2 ${
-          isWealth ? 'bg-[#5b21b6] border-[#fbbf24]' : 'bg-[#000] border-amber-500'
+      <div className="relative z-10 flex-1 text-center pl-1 pr-1">
+        <span className="text-[11px] font-black italic tracking-tighter text-white drop-shadow-md leading-none block transform translate-y-[0.5px]">
+          {level}
+        </span>
+      </div>
+      <div className="relative z-20 w-[22px] h-[22px] flex items-center justify-center -mr-2">
+        <div className={`absolute inset-0 rounded-sm transform rotate-45 border border-amber-500 shadow-md ${
+          isWealth ? 'bg-[#7c3aed]' : 'bg-[#000]'
         }`}></div>
-        <span className="relative z-20 text-lg mb-0.5">👑</span>
-      </div>
-      <div className="relative z-10 flex-1 pr-3 text-center">
-        <span className="text-sm font-black italic tracking-tighter text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{level}</span>
+        <span className="relative z-30 text-[10px] mb-0.5 drop-shadow-md select-none">👑</span>
       </div>
     </div>
   );
 };
 
-const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, onClose, isCurrentUser, onAction, currentUser, allUsers = [], currentRoom, onShowRoomRank }) => {
-  const [roomContribution, setRoomContribution] = useState<number>(0);
+const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, onClose, isCurrentUser, onAction, currentUser, allUsers = [], currentRoom }) => {
   const [showAdminMenu, setShowAdminMenu] = useState(false);
-  const [showSecurityModal, setShowSecurityModal] = useState(false);
-  const [securityTab, setSecurityTab] = useState<'id' | 'email'>('id');
-  const [newPassword, setNewPassword] = useState('');
-  const [newEmail, setNewEmail] = useState(currentUser.email || '');
-  const [authPass, setAuthPass] = useState('');
   
   const user = useMemo(() => {
     const latest = allUsers.find(u => u.id === initialUser.id);
@@ -63,287 +57,191 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
 
   const isHost = currentRoom.hostId === currentUser.id;
   const isModerator = currentRoom.moderators?.includes(currentUser.id);
-  const targetIsModerator = currentRoom.moderators?.includes(user.id);
   const canManage = (isHost || isModerator) && !isCurrentUser;
-
-  useEffect(() => {
-    if (currentRoom.id && user.id) {
-       const fetchContrib = async () => {
-          const docRef = doc(db, 'rooms', currentRoom.id, 'contributors', user.id);
-          const snap = await getDoc(docRef);
-          if (snap.exists()) {
-             setRoomContribution(snap.data().amount || 0);
-          }
-       };
-       fetchContrib();
-    }
-  }, [currentRoom.id, user.id]);
-
-  const handleUpdateIdPassword = async () => {
-    if (newPassword.length < 6) return alert('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
-    try {
-      await updateDoc(doc(db, 'users', currentUser.id), { loginPassword: newPassword });
-      alert('تم ربط الحساب بكلمة مرور الـ ID بنجاح!');
-      setShowSecurityModal(false);
-      setNewPassword('');
-    } catch (e) {
-      alert('فشل تحديث البيانات');
-    }
-  };
-
-  const handleUpdateEmailAuth = async () => {
-    if (!newEmail.includes('@')) return alert('يرجى إدخال بريد إلكتروني صحيح');
-    if (authPass.length < 6) return alert('كلمة السر يجب أن تكون 6 أحرف على الأقل');
-    try {
-      await updateDoc(doc(db, 'users', currentUser.id), { 
-        email: newEmail,
-        authPassword: authPass 
-      });
-      alert('تم تعيين البريد وكلمة السر بنجاح! يمكنك الآن استخدامهما للدخول المباشر.');
-      setShowSecurityModal(false);
-      setAuthPass('');
-    } catch (e) {
-      alert('فشل تحديث البيانات');
-    }
-  };
-
-  const handleAdminAction = async (action: 'toggleMod' | 'kickMic' | 'kickRoom' | 'resetUserCharm' | 'breakCP' | 'breakFriend') => {
-    const roomRef = doc(db, 'rooms', currentRoom.id);
-    
-    if (action === 'breakCP') {
-      if (confirm('هل تريد إنهاء ارتباط الـ CP لهذا المستخدم؟')) {
-        await updateDoc(doc(db, 'users', user.id), { cpPartner: null });
-        if (user.cpPartner?.id) await updateDoc(doc(db, 'users', user.cpPartner.id), { cpPartner: null });
-        alert('تم فك الارتباط بنجاح');
-      }
-      return;
-    }
-
-    if (action === 'breakFriend') {
-      if (confirm('هل تريد إنهاء علاقة الصداقة لهذا المستخدم؟')) {
-        await updateDoc(doc(db, 'users', user.id), { friendPartner: null });
-        if (user.friendPartner?.id) await updateDoc(doc(db, 'users', user.friendPartner.id), { friendPartner: null });
-        alert('تم إنهاء الصداقة بنجاح');
-      }
-      return;
-    }
-
-    if (action === 'resetUserCharm') {
-      if (confirm(`هل تريد تصفير كاريزما ${user.name} على المايك؟`)) {
-        onAction('resetUserCharm');
-        setShowAdminMenu(false);
-      }
-      return;
-    }
-
-    try {
-      if (action === 'toggleMod') {
-        if (targetIsModerator) {
-          await updateDoc(roomRef, { moderators: arrayRemove(user.id) });
-        } else {
-          await updateDoc(roomRef, { moderators: arrayUnion(user.id) });
-        }
-      } else if (action === 'kickMic') {
-        const newSpeakers = (currentRoom.speakers || []).filter(s => s.id !== user.id);
-        await updateDoc(roomRef, { speakers: newSpeakers });
-      } else if (action === 'kickRoom') {
-        if (confirm(`هل أنت متأكد من طرد ${user.name} من الغرفة؟`)) {
-          const newSpeakers = (currentRoom.speakers || []).filter(s => s.id !== user.id);
-          await updateDoc(roomRef, { 
-            speakers: newSpeakers,
-            listeners: increment(-1),
-            kickedUsers: arrayUnion(user.id)
-          });
-          onClose();
-        }
-      }
-      setShowAdminMenu(false);
-    } catch (e) {
-      console.error(e);
-      alert('حدث خطأ أثناء تنفيذ الإجراء');
-    }
-  };
 
   const wealthLvl = calculateLevel(Number(user.wealth || 0));
   const rechargeLvl = calculateLevel(Number(user.rechargePoints || 0));
-  
+
   return (
-    <div className="fixed inset-0 z-[160] flex items-end justify-center pointer-events-none p-4 overflow-hidden pb-10">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/70 backdrop-blur-[2px] pointer-events-auto" />
+    <div className="fixed inset-0 z-[160] flex items-end justify-center p-0 font-cairo">
+      <motion.div 
+        initial={{ opacity: 0 }} 
+        animate={{ opacity: 1 }} 
+        exit={{ opacity: 0 }} 
+        onClick={onClose} 
+        className="absolute inset-0 bg-black/70 backdrop-blur-[4px]" 
+      />
 
       <motion.div 
-        initial={{ y: "100%", opacity: 0 }} 
-        animate={{ y: 0, opacity: 1 }} 
-        exit={{ y: "100%", opacity: 0 }} 
-        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-        className="relative w-full max-w-[340px] bg-[#0c101b] rounded-[2.5rem] pointer-events-auto border border-amber-500/20 shadow-[0_40px_150px_rgba(0,0,0,1)] flex flex-col max-h-[85vh]"
+        initial={{ y: "100%" }} 
+        animate={{ y: 0 }} 
+        exit={{ y: "100%" }} 
+        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+        className="relative w-full max-w-md bg-[#030816] rounded-t-[3rem] border-t border-white/10 shadow-[0_-20px_60px_rgba(0,0,0,0.9)] flex flex-col overflow-hidden h-[85vh]"
+        dir="rtl"
       >
-        <div className="h-28 bg-slate-950 relative rounded-t-[2.5rem] shrink-0 overflow-visible">
-          {user.cover ? <img src={user.cover} className="w-full h-full object-cover opacity-20 rounded-t-[2.5rem]" alt="" /> : <div className="w-full h-full bg-gradient-to-br from-[#1a1202] via-[#0c101b] to-[#1a1202] rounded-t-[2.5rem]"></div>}
-          
-          <div className="absolute top-4 left-5 z-[110] flex gap-2">
-            <button onClick={onClose} className="p-2 bg-black/60 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 shadow-lg active:scale-90"><X size={16} /></button>
-            {canManage && (
-              <div className="relative">
+        {/* Full Background Layer - This makes the cover fill the whole sheet */}
+        <div className="absolute inset-0 z-0">
+          {user.cover ? (
+            <img src={user.cover} className="w-full h-full object-cover opacity-40" alt="background" />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-indigo-950 via-slate-900 to-[#030816]"></div>
+          )}
+          {/* Darker overlay to ensure content is readable */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#030816] via-[#030816]/70 to-black/20"></div>
+        </div>
+
+        {/* Top Header Section (Z-INDEX 20) */}
+        <div className="relative z-20 h-44 w-full shrink-0">
+          <div className="absolute top-6 right-6 flex items-center gap-2">
+             <button onClick={onClose} className="p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 hover:text-white border border-white/10 transition-all">
+               <X size={20} />
+             </button>
+          </div>
+
+          <div className="absolute top-6 left-6 flex items-center gap-2">
+             {isCurrentUser && (
+                <button 
+                  onClick={() => onAction('edit')}
+                  className="p-2 bg-blue-600/60 backdrop-blur-md rounded-full text-white border border-blue-400/30 transition-all shadow-lg active:scale-90"
+                  title="تعديل الحساب"
+                >
+                  <Edit3 size={16} />
+                </button>
+             )}
+             {canManage && (
                 <button 
                   onClick={() => setShowAdminMenu(!showAdminMenu)}
-                  className={`p-2 rounded-full border border-white/10 shadow-lg active:scale-90 transition-all ${showAdminMenu ? 'bg-amber-500 text-black' : 'bg-black/60 text-white/70'}`}
+                  className="p-2.5 bg-black/40 backdrop-blur-md rounded-full text-white/70 border border-white/10"
                 >
-                  <MoreVertical size={16} />
+                  <MoreVertical size={20} />
                 </button>
-                
-                <AnimatePresence>
-                  {showAdminMenu && (
-                    <motion.div 
-                      initial={{ opacity: 0, scale: 0.9, x: 10 }}
-                      animate={{ opacity: 1, scale: 1, x: 0 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      className="absolute top-10 left-0 w-48 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl z-[200] overflow-hidden"
-                    >
-                      {isHost && (
-                        <button onClick={() => handleAdminAction('toggleMod')} className="w-full p-3 flex items-center gap-3 hover:bg-white/5 border-b border-white/5 text-right" dir="rtl">
-                           <ShieldCheck size={16} className={targetIsModerator ? 'text-red-500' : 'text-emerald-500'} />
-                           <span className="text-xs font-bold text-white">{targetIsModerator ? 'سحب الإشراف' : 'تعيين مشرف'}</span>
-                        </button>
-                      )}
-                      {user.cpPartner && (
-                        <button onClick={() => handleAdminAction('breakCP')} className="w-full p-3 flex items-center gap-3 hover:bg-white/5 border-b border-white/5 text-right text-pink-500" dir="rtl">
-                           <Heart size={16} />
-                           <span className="text-xs font-bold">فك الـ CP</span>
-                        </button>
-                      )}
-                      {user.friendPartner && (
-                        <button onClick={() => handleAdminAction('breakFriend')} className="w-full p-3 flex items-center gap-3 hover:bg-white/5 border-b border-white/5 text-right text-blue-500" dir="rtl">
-                           <Users size={16} />
-                           <span className="text-xs font-bold">إنهاء الصداقة</span>
-                        </button>
-                      )}
-                      {/* Fixed: Completed truncated button and added remaining action buttons */}
-                      <button onClick={() => handleAdminAction('resetUserCharm')} className="w-full p-3 flex items-center gap-3 hover:bg-white/5 border-b border-white/5 text-right" dir="rtl">
-                         <RotateCcw size={16} className="text-blue-500" />
-                         <span className="text-xs font-bold text-white">تصفير الكاريزما</span>
-                      </button>
-                      <button onClick={() => handleAdminAction('kickMic')} className="w-full p-3 flex items-center gap-3 hover:bg-white/5 border-b border-white/5 text-right" dir="rtl">
-                         <MicOff size={16} className="text-orange-500" />
-                         <span className="text-xs font-bold text-white">تنزيل من المايك</span>
-                      </button>
-                      <button onClick={() => handleAdminAction('kickRoom')} className="w-full p-3 flex items-center gap-3 hover:bg-white/5 text-right text-red-500" dir="rtl">
-                         <UserX size={16} />
-                         <span className="text-xs font-bold">طرد من الغرفة</span>
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+             )}
+          </div>
+
+          {/* Avatar Position - Still Overlapping but on top of full background */}
+          <div className="absolute bottom-2 left-8">
+            <div className="relative w-28 h-28">
+              <div className="w-full h-full rounded-full border-4 border-[#030816] overflow-hidden bg-slate-800 shadow-2xl">
+                <img src={user.avatar} className="w-full h-full object-cover" alt="avatar" />
               </div>
-            )}
+              {user.frame && (
+                <img src={user.frame} className="absolute inset-0 scale-[1.3] pointer-events-none drop-shadow-2xl" alt="frame" />
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 pt-10 space-y-6">
-          <div className="flex flex-col items-center">
-            <div className="relative w-24 h-24 mb-3">
-              <div className="w-full h-full rounded-full border-2 border-white/20 overflow-hidden bg-slate-900 shadow-2xl">
-                <img src={user.avatar} className="w-full h-full object-cover" alt="" />
+        {/* Scrollable Content (Z-INDEX 20) */}
+        <div className="relative z-20 flex-1 px-8 pt-6 pb-10 space-y-6 overflow-y-auto scrollbar-hide">
+          
+          {/* CP Relationship Box */}
+          {user.cpPartner && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-gradient-to-r from-purple-900/40 via-pink-600/30 to-purple-900/40 border border-pink-500/20 rounded-2xl p-3 flex items-center justify-center gap-4 shadow-xl backdrop-blur-sm"
+            >
+              <div className="flex items-center gap-3">
+                <img src={user.avatar} className="w-10 h-10 rounded-full border-2 border-pink-500/40 object-cover" alt="" />
+                <div className="flex flex-col items-center gap-0.5">
+                   <Heart size={18} fill="#ec4899" className="text-pink-500 animate-pulse" />
+                   <span className="text-[7px] font-black text-pink-300 uppercase tracking-widest">Sweet Couple</span>
+                </div>
+                <img src={user.cpPartner.avatar} className="w-10 h-10 rounded-full border-2 border-pink-500/40 object-cover shadow-lg" alt="" />
               </div>
-              {user.frame && <img src={user.frame} className="absolute inset-0 scale-[1.3] pointer-events-none" alt="" />}
+            </motion.div>
+          )}
+
+          {/* User Name & ID & Level Badges Section */}
+          <div className="text-right space-y-4">
+            <div className="flex items-center justify-start gap-3 flex-wrap flex-row-reverse">
+                <h2 className="text-3xl font-black text-white tracking-tight drop-shadow-lg">{user.name}</h2>
+                <div className="flex items-center gap-1">
+                   <ProfileLevelBadge level={wealthLvl} type="wealth" />
+                   <ProfileLevelBadge level={rechargeLvl} type="recharge" />
+                </div>
             </div>
             
-            <div className="flex items-center gap-2 mb-1">
-              <h2 className="text-xl font-black text-white">{user.name}</h2>
-              {user.badge && <img src={user.badge} className="h-4 object-contain" alt="" />}
-            </div>
-            
-            <div className="flex items-center gap-2 mb-4">
-              <div className="bg-white/10 px-2 py-0.5 rounded-lg border border-white/10 text-[9px] font-black text-slate-400">
-                ID: {user.customId || user.id}
-              </div>
-              <LevelBadge level={wealthLvl} type="wealth" />
-              <LevelBadge level={rechargeLvl} type="recharge" />
-            </div>
-
-            {user.bio && (
-              <p className="text-xs text-slate-400 text-center mb-6 px-4 line-clamp-3 font-medium">
-                {user.bio}
-              </p>
-            )}
-
-            <div className="grid grid-cols-2 gap-4 w-full mb-6">
-              <div className="bg-white/5 border border-white/5 p-4 rounded-3xl text-center flex flex-col items-center">
-                <span className="text-[10px] text-slate-500 font-bold uppercase mb-1">كاريزما الغرفة</span>
-                <div className="flex items-center gap-1.5 text-pink-500 font-black text-lg">
-                  {roomContribution.toLocaleString()}
-                  <Trophy size={16} />
+            {/* ID Badge Display */}
+            <button 
+              onClick={() => { navigator.clipboard.writeText(user.customId || user.id); alert('تم نسخ الـ ID'); }}
+              className="relative inline-flex items-center justify-center min-h-[32px]"
+            >
+              {user.badge ? (
+                <div className="relative flex items-center justify-center h-10 min-w-[110px] px-4">
+                   <img src={user.badge} className="absolute inset-0 w-full h-full object-fill z-0" alt="" />
+                   <span className="relative z-10 text-white font-black text-[12px] drop-shadow-md ml-4">ID: {user.customId || user.id}</span>
                 </div>
-              </div>
-              <div className="bg-white/5 border border-white/5 p-4 rounded-3xl text-center flex flex-col items-center">
-                <span className="text-[10px] text-slate-500 font-bold uppercase mb-1">إجمالي الدعم</span>
-                <div className="flex items-center gap-1.5 text-yellow-500 font-black text-lg">
-                  {(Number(user.wealth || 0)).toLocaleString()}
-                  <Coins size={16} />
+              ) : (
+                <div className="bg-[#3b82f6] text-white px-4 py-1.5 rounded-full text-xs font-black flex items-center gap-2 w-fit shadow-lg shadow-blue-900/20">
+                   ID: {user.customId || user.id}
                 </div>
-              </div>
-            </div>
+              )}
+            </button>
+          </div>
 
-            <div className="flex gap-3 w-full">
-              {!isCurrentUser && (
-                <>
-                  <button onClick={() => { onAction('message'); onClose(); }} className="flex-1 bg-white/5 border border-white/10 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all">
-                    <MessageCircle size={20} />
-                    دردشة
-                  </button>
-                  <button onClick={() => onAction('gift')} className="flex-1 bg-gradient-to-r from-pink-600 to-rose-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-pink-900/20 flex items-center justify-center gap-2 active:scale-95 transition-all">
-                    <Gift size={20} />
-                    إهداء
-                  </button>
-                </>
-              )}
-              {isCurrentUser && (
-                <button onClick={() => { setShowSecurityModal(true); }} className="w-full bg-blue-600/20 border border-blue-500/30 text-blue-400 font-black py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all">
-                  <ShieldCheck size={20} />
-                  أمان الحساب والربط
-                </button>
-              )}
-            </div>
+          {/* Achievements / Medals Display - Natural Look & Larger Size */}
+          <div className="pt-2">
+             <div className="flex flex-wrap gap-4 items-center">
+                {user.achievements && user.achievements.length > 0 ? (
+                   user.achievements.map((medal, idx) => (
+                      <motion.div 
+                        initial={{ scale: 0, opacity: 0 }} 
+                        animate={{ scale: 1, opacity: 1 }} 
+                        transition={{ delay: idx * 0.05 }}
+                        key={idx} 
+                        className="w-20 h-20 flex items-center justify-center p-0 transition-transform hover:scale-110"
+                      >
+                         <img src={medal} className="w-full h-full object-contain filter drop-shadow-[0_10px_20px_rgba(0,0,0,0.6)]" alt="" />
+                      </motion.div>
+                   ))
+                ) : (
+                   <div className="w-full text-center py-6 bg-black/40 backdrop-blur-md rounded-3xl border border-white/5">
+                      <p className="text-xs text-slate-500 font-bold">لا توجد أوسمة معروضة حالياً</p>
+                   </div>
+                )}
+             </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-4 pt-6">
+             <button 
+               onClick={() => onAction('gift')}
+               className="flex-1 bg-gradient-to-r from-[#d946ef] via-[#ec4899] to-[#8b5cf6] text-white font-black py-4 rounded-[2rem] flex items-center justify-center gap-3 shadow-2xl shadow-pink-900/40 active:scale-95 transition-all text-sm uppercase tracking-wider"
+             >
+               إرسال هدية <Gift size={20} fill="currentColor" />
+             </button>
+             
+             {!isCurrentUser && (
+               <button 
+                 onClick={() => { onAction('message'); onClose(); }}
+                 className="w-16 h-16 bg-white/10 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-center text-white active:scale-90 transition-all shadow-xl"
+               >
+                 <MessageCircle size={26} />
+               </button>
+             )}
           </div>
         </div>
       </motion.div>
 
-      {/* Security Modal for Current User */}
+      {/* Admin Quick Actions Menu */}
       <AnimatePresence>
-        {showSecurityModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md pointer-events-auto">
-            <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-slate-900 border border-white/10 rounded-[2.5rem] w-full max-w-sm p-6 shadow-2xl relative">
-              <button onClick={() => setShowSecurityModal(false)} className="absolute top-4 right-4 p-2 text-slate-500"><X size={20} /></button>
-              
-              <h3 className="text-xl font-black text-white mb-6 text-center">أمان وربط الحساب</h3>
-              
-              <div className="flex bg-black/40 p-1 rounded-xl mb-6">
-                <button onClick={() => setSecurityTab('id')} className={`flex-1 py-2 text-[10px] font-black rounded-lg transition-all ${securityTab === 'id' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>ربط الـ ID</button>
-                <button onClick={() => setSecurityTab('email')} className={`flex-1 py-2 text-[10px] font-black rounded-lg transition-all ${securityTab === 'email' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>ربط البريد</button>
-              </div>
-
-              {securityTab === 'id' ? (
-                <div className="space-y-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 pr-1">كلمة مرور الـ ID الجديدة</label>
-                    <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="6 أرقام أو حروف على الأقل" className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-white text-sm outline-none focus:border-blue-500" />
-                  </div>
-                  <button onClick={handleUpdateIdPassword} className="w-full py-4 bg-blue-600 text-white font-black rounded-xl active:scale-95 transition-all">تحديث كلمة مرور ID</button>
+        {showAdminMenu && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }} 
+            animate={{ opacity: 1, scale: 1 }} 
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+          >
+             <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] w-full max-w-xs p-6 shadow-2xl space-y-4">
+                <div className="flex justify-between items-center mb-2">
+                   <h4 className="text-white font-black">إدارة العضو</h4>
+                   <button onClick={() => setShowAdminMenu(false)}><X size={20} className="text-slate-500" /></button>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 pr-1">البريد الإلكتروني</label>
-                    <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-white text-sm outline-none focus:border-blue-500" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 pr-1">تعيين كلمة سر الدخول</label>
-                    <input type="password" value={authPass} onChange={(e) => setAuthPass(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-white text-sm outline-none focus:border-blue-500" />
-                  </div>
-                  <button onClick={handleUpdateEmailAuth} className="w-full py-4 bg-emerald-600 text-white font-black rounded-xl active:scale-95 transition-all">ربط البريد وتفعيل الدخول</button>
-                </div>
-              )}
-            </motion.div>
+                <button onClick={() => { onAction('resetUserCharm'); setShowAdminMenu(false); }} className="w-full p-4 bg-white/5 rounded-2xl flex items-center gap-3 text-white text-xs font-bold hover:bg-white/10"><RotateCcw size={16} className="text-blue-400" /> تصفير الكاريزما</button>
+                <button className="w-full p-4 bg-white/5 rounded-2xl flex items-center gap-3 text-red-500 text-xs font-bold hover:bg-red-500/10"><UserX size={16} /> طرد من الغرفة</button>
+             </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -351,5 +249,4 @@ const UserProfileSheet: React.FC<UserProfileSheetProps> = ({ user: initialUser, 
   );
 };
 
-/* Fix: Added missing default export */
 export default UserProfileSheet;

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '../../services/firebase';
 import { doc, collection, addDoc, updateDoc, increment, serverTimestamp, writeBatch, onSnapshot, getDoc, query, orderBy, limit, where, Timestamp, setDoc, deleteDoc, arrayUnion, getDocs } from 'firebase/firestore';
@@ -25,6 +24,7 @@ import WheelGameModal from '../WheelGameModal';
 import SlotsGameModal from '../SlotsGameModal';
 import LionWheelGameModal from '../LionWheelGameModal';
 import WinStrip from '../WinStrip';
+import EditProfileModal from '../EditProfileModal';
 import { AnimatePresence, motion } from 'framer-motion';
 
 // دالة حساب المستوى الموحدة لضمان التطابق
@@ -43,7 +43,7 @@ const ChatLevelBadge: React.FC<{ level: number; type: 'wealth' | 'recharge' }> =
           ? 'bg-gradient-to-r from-[#6a29e3] to-[#8b5cf6]' 
           : 'bg-[#121212]'
       }`}>
-        <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
+        <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')]"></div>
       </div>
       <div className="relative z-10 flex-1 text-center pl-1 pr-1">
         <span className="text-[10px] font-black italic tracking-tighter text-white drop-shadow-1px_2px_rgba(0,0,0,0.8) leading-none block transform translate-y-[0.5px]">
@@ -76,6 +76,7 @@ const VoiceRoom: React.FC<any> = ({
   const [showGameCenter, setShowGameCenter] = useState(false);
   const [activeGame, setActiveGame] = useState<GameType | null>(null);
   const [showProfileSheet, setShowProfileSheet] = useState(false);
+  const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
   const [selectedUserForProfile, setSelectedUserForProfile] = useState<User | null>(null);
   const [micSkins, setMicSkins] = useState<Record<number, string>>({});
@@ -559,12 +560,12 @@ const VoiceRoom: React.FC<any> = ({
       {showLuckyBag && <LuckyBagModal isOpen={showLuckyBag} onClose={() => setShowLuckyBag(false)} userCoins={Number(currentUser.coins)} onSend={handleSendLuckyBag} />}
       <GameCenterModal isOpen={showGameCenter} onClose={() => setShowGameCenter(false)} onSelectGame={(game) => { setActiveGame(game); setShowGameCenter(false); }} />
       
-      {/* Fix: Replace undefined 'user' with 'currentUser' in game modal calls */}
       {activeGame === 'wheel' && <WheelGameModal isOpen={activeGame === 'wheel'} onClose={() => setActiveGame(null)} userCoins={Number(currentUser.coins)} onUpdateCoins={(c) => onUpdateUser({ coins: c })} winRate={gameSettings.wheelWinRate} gameSettings={gameSettings} />}
       {activeGame === 'slots' && <SlotsGameModal isOpen={activeGame === 'slots'} onClose={() => setActiveGame(null)} userCoins={Number(currentUser.coins)} onUpdateCoins={(c) => onUpdateUser({ coins: c })} winRate={gameSettings.slotsWinRate} gameSettings={gameSettings} />}
       {activeGame === 'lion' && <LionWheelGameModal isOpen={activeGame === 'lion'} onClose={() => setActiveGame(null)} userCoins={Number(currentUser.coins)} onUpdateCoins={(c) => onUpdateUser({ coins: c })} gameSettings={gameSettings} />}
 
-      <AnimatePresence>{showProfileSheet && selectedUserForProfile && (<UserProfileSheet user={selectedUserForProfile} onClose={() => setShowProfileSheet(false)} isCurrentUser={selectedUserForProfile.id === currentUser.id} onAction={(action) => { if (action === 'gift') setShowGifts(true); if (action === 'message') onOpenPrivateChat(selectedUserForProfile); if (action === 'resetUserCharm') { const updated = localSpeakers.map(s => s.id === selectedUserForProfile.id ? { ...s, charm: 0 } : s); setLocalSpeakers(updated); queueRoomSpeakersUpdate(updated); } }} currentUser={currentUser} allUsers={users} currentRoom={room} />)}</AnimatePresence>
+      <AnimatePresence>{showProfileSheet && selectedUserForProfile && (<UserProfileSheet user={selectedUserForProfile} onClose={() => setShowProfileSheet(false)} isCurrentUser={selectedUserForProfile.id === currentUser.id} onAction={(action) => { if (action === 'gift') setShowGifts(true); if (action === 'message') onOpenPrivateChat(selectedUserForProfile); if (action === 'edit') setShowEditProfileModal(true); if (action === 'resetUserCharm') { const updated = localSpeakers.map(s => s.id === selectedUserForProfile.id ? { ...s, charm: 0 } : s); setLocalSpeakers(updated); queueRoomSpeakersUpdate(updated); } }} currentUser={currentUser} allUsers={users} currentRoom={room} />)}</AnimatePresence>
+      <AnimatePresence>{showEditProfileModal && <EditProfileModal isOpen={showEditProfileModal} onClose={() => setShowEditProfileModal(false)} currentUser={currentUser} onSave={onUpdateUser} />}</AnimatePresence>
     </div>
   );
 };

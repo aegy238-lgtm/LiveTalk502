@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Trophy, History, Coins, Volume2, VolumeX, HelpCircle, Star, Zap, ChevronLeft, ChevronRight, User as UserIcon } from 'lucide-react';
@@ -30,7 +29,7 @@ enum GameState {
 
 const LionWheelGameModal: React.FC<LionWheelGameModalProps> = ({ isOpen, onClose, userCoins, onUpdateCoins, gameSettings }) => {
   const [state, setState] = useState<GameState>(GameState.BETTING);
-  const [timer, setTimer] = useState(10); 
+  const [timer, setTimer] = useState(15);
   
   const CHIPS = useMemo(() => gameSettings?.lionChips || [100, 1000, 10000, 100000], [gameSettings?.lionChips]);
   const [selectedChip, setSelectedChip] = useState(CHIPS[0]);
@@ -46,7 +45,6 @@ const LionWheelGameModal: React.FC<LionWheelGameModalProps> = ({ isOpen, onClose
     }
   }, [CHIPS, selectedChip]);
 
-  // أبعاد تم تحسينها لتوفير مساحة رأسية أكبر
   const WHEEL_RADIUS = 90; 
   const POD_WIDTH = 62;
   const POD_HEIGHT = 48;
@@ -76,7 +74,7 @@ const LionWheelGameModal: React.FC<LionWheelGameModalProps> = ({ isOpen, onClose
         setWinner(null);
         setWinAmount(0);
         setBets({});
-        setTimer(10);
+        setTimer(15); 
         setState(GameState.BETTING);
       }, 4000);
     }
@@ -131,12 +129,10 @@ const LionWheelGameModal: React.FC<LionWheelGameModalProps> = ({ isOpen, onClose
         animate={{ scale: 1, opacity: 1 }} 
         className="relative w-full max-w-[360px] h-[90vh] bg-[#38BDF8] shadow-2xl overflow-hidden rounded-[2.5rem] flex flex-col font-cairo border border-white/20"
       >
-        {/* Background Decor */}
         <div className="absolute inset-0 z-0 bg-gradient-to-b from-[#0EA5E9] via-[#7DD3FC] to-[#FFEDD5]"></div>
         
         <AnimatePresence>{state === GameState.RESULT && winAmount > 0 && <WinStrip amount={winAmount} />}</AnimatePresence>
 
-        {/* Header - Compact */}
         <div className="relative z-10 flex justify-between items-center p-3 pt-4 px-4">
            <button onClick={onClose} className="w-8 h-8 bg-black/20 rounded-full flex items-center justify-center text-white active:scale-90 border border-white/10"><ChevronLeft size={20} /></button>
            <div className="flex flex-col items-center">
@@ -150,7 +146,6 @@ const LionWheelGameModal: React.FC<LionWheelGameModalProps> = ({ isOpen, onClose
            </div>
         </div>
 
-        {/* Top Info Banner - Compact */}
         <div className="relative z-10 px-4 flex justify-between items-start mt-1">
            <div className="bg-black/30 backdrop-blur-xl rounded-xl p-1 border border-white/10 w-11 shadow-lg">
               <span className="text-[6px] font-black text-white/50 text-center block mb-0.5 uppercase">History</span>
@@ -177,11 +172,9 @@ const LionWheelGameModal: React.FC<LionWheelGameModalProps> = ({ isOpen, onClose
            </div>
         </div>
 
-        {/* Center Game Field */}
         <div className="relative z-10 flex-1 flex items-center justify-center -mt-6">
             <div className="relative w-[65vw] h-[65vw] max-w-[240px] max-h-[240px] flex items-center justify-center">
                 
-                {/* Selector Ring */}
                 <AnimatePresence>
                   {state !== GameState.BETTING && (
                     <motion.div 
@@ -208,7 +201,6 @@ const LionWheelGameModal: React.FC<LionWheelGameModalProps> = ({ isOpen, onClose
                   )}
                 </AnimatePresence>
 
-                {/* Choice Pods */}
                 <div className="absolute inset-0">
                    {LION_ITEMS.map((item, idx) => {
                       const angle = (360 / LION_ITEMS.length) * idx;
@@ -245,25 +237,30 @@ const LionWheelGameModal: React.FC<LionWheelGameModalProps> = ({ isOpen, onClose
                    })}
                 </div>
 
-                {/* Center Lion Hub */}
                 <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
                    <div className="w-20 h-20 relative">
                       <div className="w-full h-full rounded-full border-[5px] border-amber-500 bg-[#FED7AA] shadow-[0_0_25px_rgba(217,119,6,0.3)] flex items-center justify-center relative overflow-hidden">
                          <span className="text-4xl filter drop-shadow-lg">🦁</span>
                          <div className="absolute top-0 left-0 right-0 h-5 bg-white/20 -rotate-3"></div>
                       </div>
-                      <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 bg-amber-800 border-2 border-yellow-400 text-yellow-400 w-9 h-9 rounded-full flex items-center justify-center font-black text-lg shadow-md italic">
-                         {state === GameState.BETTING ? timer : (state === GameState.SPINNING ? '...' : 'WIN')}
+                      {/* الدائرة البنية المحسنة للعداد */}
+                      <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-amber-800 border-2 border-yellow-400 text-yellow-400 w-12 h-12 rounded-full flex flex-col items-center justify-center font-black shadow-md italic leading-none overflow-hidden">
+                         {state === GameState.BETTING ? (
+                            <>
+                               <span className="text-[14px] mb-0.5">{timer}</span>
+                               <span className="text-[7px] opacity-80">ثانية</span>
+                            </>
+                         ) : (
+                            <span className="text-[10px]">{state === GameState.SPINNING ? '...' : 'WIN'}</span>
+                         )}
                       </div>
                    </div>
                 </div>
             </div>
         </div>
 
-        {/* Lower Control Panel - REDUCED HEIGHT & COMPACT (الشريط الأحمر) */}
         <div className="relative z-20 bg-[#EF4444] rounded-t-[2.5rem] p-3 border-t-4 border-[#FBBF24] flex flex-col gap-3 shadow-[0_-15px_40px_rgba(0,0,0,0.5)] pb-6 mt-auto">
            
-           {/* Chips Strip - الخط الأحمر (أزرار الرهان) */}
            <div className="flex justify-between items-center gap-1.5 bg-black/20 p-1 rounded-full border border-white/5">
               {CHIPS.map(c => (
                  <button 
@@ -277,7 +274,6 @@ const LionWheelGameModal: React.FC<LionWheelGameModalProps> = ({ isOpen, onClose
               ))}
            </div>
 
-           {/* User Card - الخط الأخضر (بيانات المستخدم) - COMPACT */}
            <div className="flex items-center justify-between gap-2">
               <div className="flex-1 bg-white/95 rounded-2xl p-1.5 px-3 flex items-center gap-2 border-b-4 border-slate-300 shadow-lg min-w-0">
                  <div className="relative w-8 h-8 rounded-full border-2 border-amber-400 overflow-hidden shadow-sm shrink-0">
@@ -299,7 +295,6 @@ const LionWheelGameModal: React.FC<LionWheelGameModalProps> = ({ isOpen, onClose
               </div>
            </div>
 
-           {/* Footer Action - COMPACT */}
            <div className="flex items-center justify-between border-t border-white/10 pt-2 px-1">
               <div className="flex flex-col items-start leading-none">
                  <span className="text-[7px] font-black text-white/40 uppercase mb-0.5">Profit</span>
