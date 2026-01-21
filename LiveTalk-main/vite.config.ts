@@ -6,7 +6,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
-      base: './', // يضمن عمل الروابط بشكل صحيح عند النشر على نطاقات فرعية
+      base: './', 
       server: {
         port: 3000,
         host: '0.0.0.0',
@@ -26,6 +26,15 @@ export default defineConfig(({ mode }) => {
         assetsDir: 'assets',
         sourcemap: false,
         minify: 'esbuild',
+        rollupOptions: {
+          // إخبار Vite بأن هذه المكتبة يتم جلبها من الخارج (CDN) عبر الـ importmap
+          external: ['agora-rtc-sdk-ng'],
+          output: {
+            globals: {
+              'agora-rtc-sdk-ng': 'AgoraRTC'
+            }
+          }
+        }
       }
     };
 });
